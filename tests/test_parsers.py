@@ -53,6 +53,26 @@ class TestParseTranscript:
         t = parse_transcript(json.dumps(data))
         assert len(t.activities) == 1
 
+    def test_handles_iso_timestamps(self):
+        """Transcripts from some environments have ISO string timestamps."""
+        data = [
+            {"type": "message", "timestamp": "2026-03-07T10:03:11.8086342+00:00", "from": {"role": 1}, "text": "hello"},
+            {"type": "message", "timestamp": "2026-03-07T10:03:15Z", "from": {"role": 0}, "text": "hi"},
+        ]
+        t = parse_transcript(json.dumps(data))
+        assert len(t.activities) == 2
+        assert t.activities[0].timestamp > 0
+        assert t.activities[1].timestamp > 0
+        # Both should be epoch seconds in 2026 range
+        assert t.activities[0].timestamp > 1_770_000_000
+        assert t.activities[1].timestamp > 1_770_000_000
+
+    def test_handles_millisecond_timestamps(self):
+        """Some transcripts use 13-digit millisecond timestamps."""
+        data = [{"type": "message", "timestamp": 1771240828617, "from": {"role": 1}, "text": "hello"}]
+        t = parse_transcript(json.dumps(data))
+        assert t.activities[0].timestamp == 1771240828
+
     def test_invalid_json_raises(self):
         with pytest.raises(Exception):
             parse_transcript("not json at all")

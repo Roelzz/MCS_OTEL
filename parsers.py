@@ -1,6 +1,7 @@
 import json
 import os
 import uuid
+from datetime import datetime, timezone
 
 from loguru import logger
 
@@ -15,6 +16,61 @@ logger.add(
 
 ROLE_BOT = 0
 ROLE_USER = 1
+
+
+def _normalize_timestamp(ts: int | float | str | None) -> int:
+    """Normalize a timestamp to unix epoch seconds (int).
+
+    Handles:
+    - int/float already in epoch seconds (10 digits) or millis (13 digits)
+    - ISO 8601 strings like '2026-03-07T10:03:11.8086342+00:00'
+    """
+    if ts is None:
+        return 0
+    if isinstance(ts, (int, float)):
+        ts_int = int(ts)
+        # 13-digit = milliseconds, convert to seconds
+        if len(str(abs(ts_int))) >= 13:
+            return ts_int // 1000
+        return ts_int
+    if isinstance(ts, str):
+        ts = ts.strip()
+        if not ts:
+            return 0
+        # Try parsing as number first
+        try:
+            return _normalize_timestamp(float(ts))
+        except ValueError:
+            pass
+        # Parse ISO 8601 string — truncate fractional seconds to 6 digits (Python max)
+        try:
+            cleaned = ts.rstrip("Z")
+            if "." in cleaned:
+                main, rest = cleaned.split(".", 1)
+                # Separate fractional seconds from timezone offset
+                frac = ""
+                tz_part = ""
+                for i, ch in enumerate(rest):
+                    if ch in ("+", "-") and i > 0:
+                        frac = rest[:i]
+                        tz_part = rest[i:]
+                        break
+                else:
+                    frac = rest
+                frac = frac[:6]
+                cleaned = f"{main}.{frac}{tz_part}"
+                if ts.endswith("Z"):
+                    cleaned += "+00:00"
+            elif ts.endswith("Z"):
+                cleaned += "+00:00"
+            dt = datetime.fromisoformat(cleaned)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return int(dt.timestamp())
+        except (ValueError, TypeError):
+            logger.warning("Could not parse timestamp '{}', returning 0", ts)
+            return 0
+    return 0
 
 # Event types we track for entity extraction
 TRACKED_EVENT_TYPES = {
@@ -72,7 +128,7 @@ def _parse_activity(raw: dict, index: int) -> MCSActivity:
     return MCSActivity(
         id=str(activity_id),
         type=raw.get("type", ""),
-        timestamp=raw.get("timestamp", 0),
+        timestamp=_normalize_timestamp(raw.get("timestamp", 0)),
         from_role=role,
         text=raw.get("text", "") or "",
         value_type=value_type,
