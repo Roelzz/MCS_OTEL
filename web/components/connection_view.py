@@ -8,18 +8,26 @@ MCS_ENTITY_LABELS: list[str] = [
     "turn",
     "UniversalSearchToolTraceData",
     "DynamicPlanReceived",
+    "DynamicPlanStepBindUpdate",
+    "DynamicPlanStepFinished",
+    "DynamicPlanFinished",
+    "DynamicServerInitialize",
+    "DynamicServerToolsList",
+    "DialogRedirect",
     "DialogTracing",
     "VariableAssignment",
     "ErrorTraceData",
 ]
 
 OTEL_COLORS: dict[str, str] = {
-    "invoke_agent": "blue",
-    "chat": "green",
-    "execute_tool": "orange",
+    "agent.turn": "blue",
+    "gen_ai.chat": "green",
+    "tool.execute": "orange",
+    "knowledge.retrieval": "teal",
     "chain": "purple",
     "text_completion": "gray",
     "create_agent": "cyan",
+    "topic_classification": "amber",
 }
 
 

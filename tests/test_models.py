@@ -53,8 +53,11 @@ class TestOTELModels:
         assert OTELSpanKind.CLIENT == "CLIENT"
 
     def test_operation_name_enum(self):
-        assert OTELOperationName.chat == "chat"
-        assert OTELOperationName.invoke_agent == "invoke_agent"
+        assert OTELOperationName.gen_ai_chat == "gen_ai.chat"
+        assert OTELOperationName.agent_turn == "agent.turn"
+        assert OTELOperationName.tool_execute == "tool.execute"
+        assert OTELOperationName.knowledge_retrieval == "knowledge.retrieval"
+        assert OTELOperationName.topic_classification == "topic_classification"
 
 
 class TestMappingModels:
@@ -67,7 +70,7 @@ class TestMappingModels:
         r = SpanMappingRule(
             rule_id="test",
             mcs_entity_type="trace_event",
-            otel_operation_name=OTELOperationName.chat,
+            otel_operation_name=OTELOperationName.gen_ai_chat,
         )
         assert r.is_root is False
         assert r.parent_rule_id is None
@@ -83,7 +86,7 @@ class TestMappingModels:
                     rule_name="Root",
                     mcs_entity_type="trace_event",
                     mcs_value_type="SessionInfo",
-                    otel_operation_name=OTELOperationName.invoke_agent,
+                    otel_operation_name=OTELOperationName.agent_turn,
                     is_root=True,
                     attribute_mappings=[
                         AttributeMapping(mcs_property="outcome", otel_attribute="session.outcome"),
@@ -106,9 +109,9 @@ class TestMappingModels:
                     rule_name="Session Root Span",
                     mcs_entity_type="trace_event",
                     mcs_value_type="SessionInfo",
-                    otel_operation_name=OTELOperationName.invoke_agent,
-                    otel_span_kind=OTELSpanKind.CLIENT,
-                    span_name_template="invoke_agent {bot_name}",
+                    otel_operation_name=OTELOperationName.agent_turn,
+                    otel_span_kind=OTELSpanKind.SERVER,
+                    span_name_template="agent.turn {bot_name}",
                     is_root=True,
                 ),
             ],
@@ -117,6 +120,6 @@ class TestMappingModels:
         assert data["version"] == "1.0"
         rule = data["rules"][0]
         assert rule["rule_id"] == "session_root"
-        assert rule["otel_operation_name"] == "invoke_agent"
-        assert rule["otel_span_kind"] == "CLIENT"
+        assert rule["otel_operation_name"] == "agent.turn"
+        assert rule["otel_span_kind"] == "SERVER"
         assert rule["is_root"] is True

@@ -81,6 +81,8 @@ TRACKED_EVENT_TYPES = {
     "DynamicPlanFinished",
     "DynamicPlanReceivedDebug",
     "DynamicPlanStepBindUpdate",
+    "DynamicServerInitialize",
+    "DynamicServerToolsList",
     "DialogTracing",
     "DialogRedirect",
     "VariableAssignment",
@@ -117,7 +119,9 @@ def _parse_activity(raw: dict, index: int) -> MCSActivity:
     """Convert a raw activity dict into an MCSActivity model."""
     from_data = raw.get("from", {})
     role = from_data.get("role", 0)
-    if not isinstance(role, int):
+    if isinstance(role, str):
+        role = ROLE_USER if role.lower() == "user" else ROLE_BOT
+    elif not isinstance(role, int):
         role = 0
 
     activity_id = raw.get("id", "") or f"act_{index}"
@@ -134,27 +138,43 @@ def _parse_activity(raw: dict, index: int) -> MCSActivity:
         value_type=value_type,
         value=raw.get("value", {}) or {},
         channel_data=raw.get("channelData", {}) or {},
+        channel_id=raw.get("channelId", "") or "",
     )
 
 
 def _extract_session_info(activities: list[MCSActivity]) -> dict:
-    """Extract SessionInfo and ConversationInfo from trace activities."""
+    """Extract SessionInfo, ConversationInfo, and channel context from activities."""
     info: dict = {}
     for a in activities:
-        if a.type != "trace":
-            continue
-        val = a.value
-        if a.value_type == "SessionInfo":
-            info["outcome"] = val.get("outcome", "None")
-            info["session_type"] = val.get("type", "Unknown")
-            info["turn_count"] = val.get("turnCount", 0)
-            info["implied_success"] = val.get("impliedSuccess", False)
-            info["outcome_reason"] = val.get("outcomeReason", "")
-            info["start_time_utc"] = val.get("startTimeUtc", "")
-            info["end_time_utc"] = val.get("endTimeUtc", "")
-        elif a.value_type == "ConversationInfo":
-            info["locale"] = val.get("locale", "")
-            info["is_design_mode"] = val.get("isDesignMode", False)
+        if a.type == "trace":
+            val = a.value
+            if a.value_type == "SessionInfo":
+                info["outcome"] = val.get("outcome", "None")
+                info["session_type"] = val.get("type", "Unknown")
+                info["turn_count"] = val.get("turnCount", 0)
+                info["implied_success"] = val.get("impliedSuccess", False)
+                info["outcome_reason"] = val.get("outcomeReason", "")
+                info["start_time_utc"] = val.get("startTimeUtc", "")
+                info["end_time_utc"] = val.get("endTimeUtc", "")
+            elif a.value_type == "ConversationInfo":
+                info["locale"] = val.get("locale", "")
+                info["is_design_mode"] = val.get("isDesignMode", False)
+
+    # Extract channel context from first activity with channel info
+    for a in activities:
+        if a.channel_id and "channel" not in info:
+            info["channel"] = a.channel_id
+        if a.channel_data:
+            tenant = a.channel_data.get("tenant", {})
+            if isinstance(tenant, dict) and tenant.get("id") and "tenant" not in info:
+                info["tenant"] = tenant["id"]
+
+    # Derive environment from design mode
+    if info.get("is_design_mode"):
+        info["environment"] = "design"
+    elif "is_design_mode" in info:
+        info["environment"] = "production"
+
     return info
 
 
@@ -253,6 +273,7 @@ def _extract_turns(activities: list[MCSActivity]) -> list[dict]:
             "bot_ts": bot_act.timestamp if bot_act else 0,
             "topic_name": topic_name,
             "action_type": action_type,
+            "turn_index": str(pos),
         })
 
     return turns
@@ -297,17 +318,88 @@ def extract_entities(transcript: MCSTranscript) -> list[MCSEntity]:
         trace_counters[vt] = count + 1
 
         label = _event_label(vt)
+        props = dict(a.value)
+        props["timestamp"] = a.timestamp
+
+        # Enrich entities with flattened properties for mapping
+        _enrich_entity_properties(vt, props)
+
         entities.append(
             MCSEntity(
                 entity_id=f"trace_{vt}_{count}",
                 entity_type="trace_event",
                 label=label,
-                properties=a.value,
+                properties=props,
             )
         )
 
     logger.info("Extracted {} entities from transcript", len(entities))
     return entities
+
+
+def _enrich_entity_properties(vt: str, props: dict) -> None:
+    """Enrich entity properties by flattening nested structures for OTEL mapping."""
+    if vt == "DynamicPlanStepBindUpdate":
+        args = props.get("arguments", {})
+        if isinstance(args, dict):
+            if "search_query" in args:
+                props["search_query"] = args["search_query"]
+            if "search_keywords" in args:
+                props["search_keywords"] = str(args["search_keywords"])
+            props["arguments_json"] = json.dumps(args)
+        task_id = props.get("taskDialogId", "")
+        if task_id.startswith("MCP:"):
+            props["mcp_tool_name"] = task_id.split(":")[-1]
+
+    elif vt == "DynamicPlanStepFinished":
+        obs = props.get("observation", {})
+        if isinstance(obs, dict):
+            # MCP tool results
+            if "content" in obs:
+                texts = [c.get("text", "") for c in obs.get("content", []) if isinstance(c, dict)]
+                props["tool_result_text"] = "\n".join(texts)
+                props["tool_is_error"] = str(obs.get("isError", False))
+            # Search results
+            if "search_result" in obs:
+                sr = obs["search_result"]
+                results = sr.get("search_results", []) if isinstance(sr, dict) else []
+                props["retrieval_document_count"] = str(len(results))
+                props["retrieval_document_names"] = ", ".join(
+                    r.get("Name", "") for r in results if isinstance(r, dict)
+                )
+                props["retrieval_source_types"] = ", ".join(
+                    sorted(set(r.get("Type", "") for r in results if isinstance(r, dict) and r.get("Type")))
+                )
+                errors = sr.get("search_errors", []) if isinstance(sr, dict) else []
+                if errors:
+                    props["retrieval_errors"] = json.dumps(errors)
+            # Connector results
+            if "messageLink" in obs:
+                props["connector_result_url"] = obs["messageLink"]
+            # HITL responder
+            if "responderObjectId" in obs:
+                props["hitl_responder_id"] = obs["responderObjectId"]
+            props["observation_json"] = json.dumps(obs)
+
+    elif vt == "UniversalSearchToolTraceData":
+        ks = props.get("knowledgeSources", [])
+        if isinstance(ks, list):
+            props["knowledge_source_count"] = str(len(ks))
+            props["knowledge_sources"] = ", ".join(str(s) for s in ks)
+        output_ks = props.get("outputKnowledgeSources", [])
+        if isinstance(output_ks, list):
+            props["output_knowledge_sources"] = ", ".join(str(s) for s in output_ks)
+
+    elif vt == "DynamicServerToolsList":
+        tools = props.get("toolsList", [])
+        if isinstance(tools, list):
+            props["tool_count"] = str(len(tools))
+            props["tool_names"] = ", ".join(
+                t.get("displayName", t.get("identifier", "")) for t in tools if isinstance(t, dict)
+            )
+
+    elif vt == "DynamicPlanFinished":
+        props["was_cancelled"] = str(props.get("wasCancelled", False))
 
 
 def _event_label(value_type: str) -> str:
@@ -320,6 +412,8 @@ def _event_label(value_type: str) -> str:
         "DynamicPlanStepFinished": "Plan Step Finished",
         "DynamicPlanStepBindUpdate": "Plan Step Bind Update",
         "DynamicPlanFinished": "Plan Finished",
+        "DynamicServerInitialize": "MCP Server Init",
+        "DynamicServerToolsList": "MCP Tools List",
         "DialogTracing": "Dialog Tracing",
         "DialogRedirect": "Dialog Redirect",
         "VariableAssignment": "Variable Assignment",

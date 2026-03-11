@@ -15,6 +15,7 @@ class MCSActivity(BaseModel):
     value_type: str = ""
     value: dict = Field(default_factory=dict)
     channel_data: dict = Field(default_factory=dict)
+    channel_id: str = ""
 
 
 class MCSTranscript(BaseModel):
@@ -45,12 +46,14 @@ class OTELSpanKind(str, Enum):
 
 
 class OTELOperationName(str, Enum):
-    chat = "chat"
-    invoke_agent = "invoke_agent"
-    execute_tool = "execute_tool"
+    agent_turn = "agent.turn"
+    gen_ai_chat = "gen_ai.chat"
+    tool_execute = "tool.execute"
+    knowledge_retrieval = "knowledge.retrieval"
     create_agent = "create_agent"
     text_completion = "text_completion"
     chain = "chain"
+    topic_classification = "topic_classification"
 
 
 class OTELSpan(BaseModel):

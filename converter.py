@@ -281,14 +281,15 @@ def generate_default_mapping() -> MappingSpecification:
         name="MCS-to-OTEL GenAI Mapping",
         service_name="copilot-studio",
         rules=[
+            # --- Root span ---
             SpanMappingRule(
                 rule_id="session_root",
                 rule_name="Session Root Span",
                 mcs_entity_type="trace_event",
                 mcs_value_type="SessionInfo",
-                otel_operation_name=OTELOperationName.invoke_agent,
-                otel_span_kind=OTELSpanKind.CLIENT,
-                span_name_template="invoke_agent {bot_name}",
+                otel_operation_name=OTELOperationName.agent_turn,
+                otel_span_kind=OTELSpanKind.SERVER,
+                span_name_template="agent.turn {bot_name}",
                 is_root=True,
                 attribute_mappings=[
                     AttributeMapping(
@@ -303,14 +304,28 @@ def generate_default_mapping() -> MappingSpecification:
                         mcs_property="conversation_id",
                         otel_attribute="gen_ai.conversation.id",
                     ),
+                    AttributeMapping(
+                        mcs_property="channel",
+                        otel_attribute="channel",
+                    ),
+                    AttributeMapping(
+                        mcs_property="environment",
+                        otel_attribute="environment",
+                    ),
+                    AttributeMapping(
+                        mcs_property="tenant",
+                        otel_attribute="tenant",
+                    ),
                 ],
             ),
+            # --- Conversation turns ---
             SpanMappingRule(
                 rule_id="user_turn",
                 rule_name="User-Bot Turn",
                 mcs_entity_type="turn",
-                otel_operation_name=OTELOperationName.chat,
-                span_name_template="chat turn:{turn_index}",
+                otel_operation_name=OTELOperationName.gen_ai_chat,
+                otel_span_kind=OTELSpanKind.CLIENT,
+                span_name_template="gen_ai.chat turn:{turn_index}",
                 parent_rule_id="session_root",
                 attribute_mappings=[
                     AttributeMapping(
@@ -326,18 +341,32 @@ def generate_default_mapping() -> MappingSpecification:
                         transform_value='[{{"role":"assistant","content":"{value}"}}]',
                     ),
                     AttributeMapping(
+                        mcs_property="user_msg",
+                        otel_attribute="user.message_preview",
+                    ),
+                    AttributeMapping(
+                        mcs_property="bot_msg",
+                        otel_attribute="assistant.message_preview",
+                    ),
+                    AttributeMapping(
                         mcs_property="topic_name",
-                        otel_attribute="copilot_studio.topic_name",
+                        otel_attribute="topic.name",
+                    ),
+                    AttributeMapping(
+                        mcs_property="turn_index",
+                        otel_attribute="conversation.turn",
                     ),
                 ],
             ),
+            # --- Knowledge search ---
             SpanMappingRule(
                 rule_id="knowledge_search",
                 rule_name="Knowledge Search",
                 mcs_entity_type="trace_event",
                 mcs_value_type="UniversalSearchToolTraceData",
-                otel_operation_name=OTELOperationName.execute_tool,
-                span_name_template="execute_tool search",
+                otel_operation_name=OTELOperationName.knowledge_retrieval,
+                otel_span_kind=OTELSpanKind.CLIENT,
+                span_name_template="knowledge.retrieval",
                 parent_rule_id="user_turn",
                 attribute_mappings=[
                     AttributeMapping(
@@ -350,8 +379,21 @@ def generate_default_mapping() -> MappingSpecification:
                         transform=TransformType.constant,
                         transform_value="datastore",
                     ),
+                    AttributeMapping(
+                        mcs_property="knowledge_sources",
+                        otel_attribute="knowledge_source",
+                    ),
+                    AttributeMapping(
+                        mcs_property="knowledge_source_count",
+                        otel_attribute="retrieval.document_count",
+                    ),
+                    AttributeMapping(
+                        mcs_property="output_knowledge_sources",
+                        otel_attribute="copilot_studio.output_knowledge_sources",
+                    ),
                 ],
             ),
+            # --- Dynamic plan ---
             SpanMappingRule(
                 rule_id="dynamic_plan",
                 rule_name="Dynamic Plan",
@@ -364,6 +406,162 @@ def generate_default_mapping() -> MappingSpecification:
                     AttributeMapping(
                         mcs_property="planIdentifier",
                         otel_attribute="copilot_studio.plan_identifier",
+                    ),
+                ],
+            ),
+            # --- Plan step bind (tool inputs, search queries) ---
+            SpanMappingRule(
+                rule_id="plan_step_bind",
+                rule_name="Plan Step Bind (Tool Input)",
+                mcs_entity_type="trace_event",
+                mcs_value_type="DynamicPlanStepBindUpdate",
+                otel_operation_name=OTELOperationName.chain,
+                span_name_template="chain bind:{taskDialogId}",
+                parent_rule_id="dynamic_plan",
+                attribute_mappings=[
+                    AttributeMapping(
+                        mcs_property="taskDialogId",
+                        otel_attribute="gen_ai.tool.name",
+                    ),
+                    AttributeMapping(
+                        mcs_property="search_query",
+                        otel_attribute="gen_ai.retrieval.query.text",
+                    ),
+                    AttributeMapping(
+                        mcs_property="search_keywords",
+                        otel_attribute="copilot_studio.search_keywords",
+                    ),
+                    AttributeMapping(
+                        mcs_property="arguments_json",
+                        otel_attribute="gen_ai.tool.call.arguments",
+                    ),
+                    AttributeMapping(
+                        mcs_property="mcp_tool_name",
+                        otel_attribute="copilot_studio.mcp_tool_name",
+                    ),
+                ],
+            ),
+            # --- Plan step finished (tool outputs, results) ---
+            SpanMappingRule(
+                rule_id="plan_step_finished",
+                rule_name="Plan Step Finished (Tool Output)",
+                mcs_entity_type="trace_event",
+                mcs_value_type="DynamicPlanStepFinished",
+                otel_operation_name=OTELOperationName.tool_execute,
+                otel_span_kind=OTELSpanKind.CLIENT,
+                span_name_template="tool.execute {taskDialogId}",
+                parent_rule_id="dynamic_plan",
+                attribute_mappings=[
+                    AttributeMapping(
+                        mcs_property="taskDialogId",
+                        otel_attribute="gen_ai.tool.name",
+                    ),
+                    AttributeMapping(
+                        mcs_property="executionTime",
+                        otel_attribute="copilot_studio.execution_time",
+                    ),
+                    AttributeMapping(
+                        mcs_property="state",
+                        otel_attribute="copilot_studio.step_state",
+                    ),
+                    AttributeMapping(
+                        mcs_property="tool_result_text",
+                        otel_attribute="gen_ai.tool.call.result",
+                    ),
+                    AttributeMapping(
+                        mcs_property="tool_is_error",
+                        otel_attribute="copilot_studio.tool_is_error",
+                    ),
+                    AttributeMapping(
+                        mcs_property="retrieval_document_count",
+                        otel_attribute="retrieval.document_count",
+                    ),
+                    AttributeMapping(
+                        mcs_property="retrieval_document_names",
+                        otel_attribute="copilot_studio.retrieval_documents",
+                    ),
+                    AttributeMapping(
+                        mcs_property="retrieval_source_types",
+                        otel_attribute="copilot_studio.retrieval_source_type",
+                    ),
+                    AttributeMapping(
+                        mcs_property="retrieval_errors",
+                        otel_attribute="copilot_studio.retrieval_errors",
+                    ),
+                    AttributeMapping(
+                        mcs_property="connector_result_url",
+                        otel_attribute="copilot_studio.connector_result_url",
+                    ),
+                    AttributeMapping(
+                        mcs_property="hitl_responder_id",
+                        otel_attribute="copilot_studio.hitl_responder_id",
+                    ),
+                ],
+            ),
+            # --- Plan finished ---
+            SpanMappingRule(
+                rule_id="plan_finished",
+                rule_name="Plan Finished",
+                mcs_entity_type="trace_event",
+                mcs_value_type="DynamicPlanFinished",
+                otel_operation_name=OTELOperationName.chain,
+                span_name_template="chain plan_finished",
+                parent_rule_id="dynamic_plan",
+                attribute_mappings=[
+                    AttributeMapping(
+                        mcs_property="planId",
+                        otel_attribute="copilot_studio.plan_identifier",
+                    ),
+                    AttributeMapping(
+                        mcs_property="was_cancelled",
+                        otel_attribute="copilot_studio.plan_was_cancelled",
+                    ),
+                ],
+            ),
+            # --- Topic classification (dialog redirect) ---
+            SpanMappingRule(
+                rule_id="topic_classification",
+                rule_name="Topic Classification",
+                mcs_entity_type="trace_event",
+                mcs_value_type="DialogRedirect",
+                otel_operation_name=OTELOperationName.topic_classification,
+                span_name_template="topic_classification",
+                parent_rule_id="user_turn",
+                attribute_mappings=[
+                    AttributeMapping(
+                        mcs_property="targetDialogId",
+                        otel_attribute="topic.name",
+                    ),
+                ],
+            ),
+            # --- MCP server init ---
+            SpanMappingRule(
+                rule_id="mcp_server_init",
+                rule_name="MCP Server Initialize",
+                mcs_entity_type="trace_event",
+                mcs_value_type="DynamicServerInitialize",
+                otel_operation_name=OTELOperationName.create_agent,
+                span_name_template="create_agent mcp_init",
+                parent_rule_id="user_turn",
+                attribute_mappings=[],
+            ),
+            # --- MCP tools list ---
+            SpanMappingRule(
+                rule_id="mcp_tools_list",
+                rule_name="MCP Tools List",
+                mcs_entity_type="trace_event",
+                mcs_value_type="DynamicServerToolsList",
+                otel_operation_name=OTELOperationName.create_agent,
+                span_name_template="create_agent mcp_tools",
+                parent_rule_id="user_turn",
+                attribute_mappings=[
+                    AttributeMapping(
+                        mcs_property="tool_count",
+                        otel_attribute="copilot_studio.mcp_tool_count",
+                    ),
+                    AttributeMapping(
+                        mcs_property="tool_names",
+                        otel_attribute="copilot_studio.mcp_tool_names",
                     ),
                 ],
             ),

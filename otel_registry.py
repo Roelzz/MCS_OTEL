@@ -159,6 +159,108 @@ RESPONSE_ATTRIBUTES: list[OTELAttribute] = [
     ),
 ]
 
+CONTEXT_ATTRIBUTES: list[OTELAttribute] = [
+    OTELAttribute(
+        key="channel",
+        value_type="string",
+        description="Communication channel (e.g. pva-studio, msteams)",
+        example_value="pva-studio",
+    ),
+    OTELAttribute(
+        key="environment",
+        value_type="string",
+        description="Deployment environment (design or production)",
+        example_value="design",
+    ),
+    OTELAttribute(
+        key="tenant",
+        value_type="string",
+        description="Azure AD tenant identifier",
+        example_value="abc-def-123",
+    ),
+    OTELAttribute(
+        key="conversation.turn",
+        value_type="string",
+        description="Turn index within the conversation",
+        example_value="0",
+    ),
+    OTELAttribute(
+        key="topic.name",
+        value_type="string",
+        description="Topic or dialog that was triggered",
+        example_value="Greeting",
+    ),
+    OTELAttribute(
+        key="user.message_preview",
+        value_type="string",
+        description="Plain text preview of the user message",
+        example_value="I need help with expenses",
+    ),
+    OTELAttribute(
+        key="assistant.message_preview",
+        value_type="string",
+        description="Plain text preview of the assistant response",
+        example_value="I can help with that!",
+    ),
+]
+
+RETRIEVAL_ATTRIBUTES: list[OTELAttribute] = [
+    OTELAttribute(
+        key="gen_ai.data_source.id",
+        value_type="string",
+        description="Identifier of the data source queried",
+        example_value="kb-001",
+    ),
+    OTELAttribute(
+        key="gen_ai.retrieval.query.text",
+        value_type="string",
+        description="The search query text sent to the retrieval system",
+        example_value="expense policy for meals",
+    ),
+    OTELAttribute(
+        key="gen_ai.retrieval.documents",
+        value_type="string",
+        description="JSON-encoded list of retrieved documents",
+        example_value='[{"name": "policy.txt"}]',
+    ),
+    OTELAttribute(
+        key="knowledge_source",
+        value_type="string",
+        description="Comma-separated list of knowledge sources queried",
+        example_value="file.policy.txt, file.team.txt",
+    ),
+    OTELAttribute(
+        key="retrieval.document_count",
+        value_type="string",
+        description="Number of documents retrieved",
+        example_value="3",
+    ),
+    OTELAttribute(
+        key="copilot_studio.retrieval_documents",
+        value_type="string",
+        description="Comma-separated names of retrieved documents",
+        example_value="policy.txt, team.txt",
+    ),
+    OTELAttribute(
+        key="copilot_studio.retrieval_source_type",
+        value_type="string",
+        description="Types of retrieval sources used",
+        example_value="DataverseSearch",
+    ),
+    OTELAttribute(
+        key="copilot_studio.retrieval_errors",
+        value_type="string",
+        description="JSON-encoded search errors if any",
+        example_value="[]",
+    ),
+    OTELAttribute(
+        key="copilot_studio.output_knowledge_sources",
+        value_type="string",
+        description="Knowledge sources that produced output",
+        example_value="file.policy.txt",
+    ),
+]
+
 MCS_CUSTOM_ATTRIBUTES: list[OTELAttribute] = [
     OTELAttribute(
         key="copilot_studio.topic_name",
@@ -185,10 +287,22 @@ MCS_CUSTOM_ATTRIBUTES: list[OTELAttribute] = [
         example_value="plan-001",
     ),
     OTELAttribute(
+        key="copilot_studio.plan_was_cancelled",
+        value_type="string",
+        description="Whether the plan was cancelled before completion",
+        example_value="False",
+    ),
+    OTELAttribute(
         key="copilot_studio.step_type",
         value_type="string",
         description="Type of step within an orchestrator plan",
         example_value="action",
+    ),
+    OTELAttribute(
+        key="copilot_studio.step_state",
+        value_type="string",
+        description="State of plan step execution (completed, failed)",
+        example_value="completed",
     ),
     OTELAttribute(
         key="copilot_studio.thought",
@@ -199,8 +313,50 @@ MCS_CUSTOM_ATTRIBUTES: list[OTELAttribute] = [
     OTELAttribute(
         key="copilot_studio.execution_time",
         value_type="string",
-        description="Execution time of the step in milliseconds",
-        example_value="1250",
+        description="Execution time of the step",
+        example_value="00:00:01.234",
+    ),
+    OTELAttribute(
+        key="copilot_studio.search_keywords",
+        value_type="string",
+        description="Search keywords used in knowledge retrieval",
+        example_value="expense policy, meals",
+    ),
+    OTELAttribute(
+        key="copilot_studio.tool_is_error",
+        value_type="string",
+        description="Whether the tool call returned an error",
+        example_value="False",
+    ),
+    OTELAttribute(
+        key="copilot_studio.connector_result_url",
+        value_type="string",
+        description="URL returned by a connector action",
+        example_value="https://teams.microsoft.com/...",
+    ),
+    OTELAttribute(
+        key="copilot_studio.hitl_responder_id",
+        value_type="string",
+        description="AAD object ID of the human-in-the-loop responder",
+        example_value="6173da01-...",
+    ),
+    OTELAttribute(
+        key="copilot_studio.mcp_tool_name",
+        value_type="string",
+        description="Name of the MCP tool being called",
+        example_value="create_new_expense_report",
+    ),
+    OTELAttribute(
+        key="copilot_studio.mcp_tool_count",
+        value_type="string",
+        description="Number of tools available on the MCP server",
+        example_value="8",
+    ),
+    OTELAttribute(
+        key="copilot_studio.mcp_tool_names",
+        value_type="string",
+        description="Comma-separated names of available MCP tools",
+        example_value="list_reports, create_report",
     ),
 ]
 
@@ -212,16 +368,20 @@ ALL_ATTRIBUTES: list[OTELAttribute] = (
     + MESSAGE_ATTRIBUTES
     + REQUEST_ATTRIBUTES
     + RESPONSE_ATTRIBUTES
+    + CONTEXT_ATTRIBUTES
+    + RETRIEVAL_ATTRIBUTES
     + MCS_CUSTOM_ATTRIBUTES
 )
 
 ATTRIBUTE_BY_KEY: dict[str, OTELAttribute] = {attr.key: attr for attr in ALL_ATTRIBUTES}
 
 OTEL_TARGETS: list[str] = [
-    "invoke_agent",
-    "chat",
-    "execute_tool",
+    "agent.turn",
+    "gen_ai.chat",
+    "tool.execute",
+    "knowledge.retrieval",
     "chain",
     "text_completion",
     "create_agent",
+    "topic_classification",
 ]
