@@ -358,6 +358,54 @@ MCS_CUSTOM_ATTRIBUTES: list[OTELAttribute] = [
         description="Comma-separated names of available MCP tools",
         example_value="list_reports, create_report",
     ),
+    OTELAttribute(
+        key="copilot_studio.plan_step_count",
+        value_type="string",
+        description="Number of steps in orchestrator plan",
+        example_value="3",
+    ),
+    OTELAttribute(
+        key="copilot_studio.plan_is_final",
+        value_type="string",
+        description="Whether this is the final plan iteration",
+        example_value="True",
+    ),
+    OTELAttribute(
+        key="copilot_studio.user_ask",
+        value_type="string",
+        description="User query as interpreted by orchestrator",
+        example_value="trigger topic",
+    ),
+    OTELAttribute(
+        key="copilot_studio.plan_summary",
+        value_type="string",
+        description="Orchestrator's summary of the plan",
+        example_value="Search knowledge base for policy",
+    ),
+    OTELAttribute(
+        key="copilot_studio.dialog_action_types",
+        value_type="string",
+        description="Comma-separated dialog action types",
+        example_value="SendActivity, SetVariable",
+    ),
+    OTELAttribute(
+        key="copilot_studio.dialog_topic_ids",
+        value_type="string",
+        description="Topic IDs referenced in dialog actions",
+        example_value="copilots_header.topic.ConversationStart",
+    ),
+    OTELAttribute(
+        key="copilot_studio.dialog_exceptions",
+        value_type="string",
+        description="Exceptions from dialog execution",
+        example_value="Error in dialog step",
+    ),
+    OTELAttribute(
+        key="copilot_studio.dialog_action_count",
+        value_type="string",
+        description="Number of dialog actions executed",
+        example_value="3",
+    ),
 ]
 
 ALL_ATTRIBUTES: list[OTELAttribute] = (

@@ -83,7 +83,7 @@ TRACKED_EVENT_TYPES = {
     "DynamicPlanStepBindUpdate",
     "DynamicServerInitialize",
     "DynamicServerToolsList",
-    "DialogTracing",
+    "DialogTracingInfo",
     "DialogRedirect",
     "VariableAssignment",
     "ErrorTraceData",
@@ -210,7 +210,8 @@ def parse_transcript(content: str) -> MCSTranscript:
     for raw in raw_activities:
         from_data = raw.get("from", {})
         role = from_data.get("role")
-        if raw.get("type") == "message" and role == ROLE_BOT:
+        is_bot = role == ROLE_BOT or (isinstance(role, str) and role.lower() == "bot")
+        if raw.get("type") == "message" and is_bot:
             bot_name = from_data.get("name", "")
             bot_id = from_data.get("id", "")
             break
@@ -283,16 +284,24 @@ def extract_entities(transcript: MCSTranscript) -> list[MCSEntity]:
     """Flatten parsed transcript into entity list for the mapping UI."""
     entities: list[MCSEntity] = []
 
-    # 1. Session root
-    if transcript.session_info:
-        entities.append(
-            MCSEntity(
-                entity_id="session_root",
-                entity_type="trace_event",
-                label="SessionInfo",
-                properties=transcript.session_info,
-            )
+    # 1. Session root — always create, synthesize from metadata if SessionInfo absent
+    has_session_info = "outcome" in transcript.session_info
+    if has_session_info:
+        root_props = dict(transcript.session_info)
+    else:
+        root_props = dict(transcript.session_info)
+        root_props["outcome"] = "Unknown"
+        root_props["session_type"] = "Unknown"
+    root_props["bot_name"] = transcript.bot_name
+    root_props["conversation_id"] = transcript.conversation_id
+    entities.append(
+        MCSEntity(
+            entity_id="session_root",
+            entity_type="trace_event",
+            label="SessionInfo",
+            properties=root_props,
         )
+    )
 
     # 2. Turns
     turns = _extract_turns(transcript.activities)
@@ -365,7 +374,7 @@ def _enrich_entity_properties(vt: str, props: dict) -> None:
                 results = sr.get("search_results", []) if isinstance(sr, dict) else []
                 props["retrieval_document_count"] = str(len(results))
                 props["retrieval_document_names"] = ", ".join(
-                    r.get("Name", "") for r in results if isinstance(r, dict)
+                    r.get("Name", "") or "" for r in results if isinstance(r, dict)
                 )
                 props["retrieval_source_types"] = ", ".join(
                     sorted(set(r.get("Type", "") for r in results if isinstance(r, dict) and r.get("Type")))
@@ -398,8 +407,40 @@ def _enrich_entity_properties(vt: str, props: dict) -> None:
                 t.get("displayName", t.get("identifier", "")) for t in tools if isinstance(t, dict)
             )
 
+    elif vt == "DynamicPlanReceived":
+        steps = props.get("steps", [])
+        if isinstance(steps, list):
+            props["step_count"] = str(len(steps))
+        props["is_final_plan"] = str(props.get("isFinalPlan", False))
+        tool_defs = props.get("toolDefinitions", [])
+        if isinstance(tool_defs, list):
+            props["tool_definition_count"] = str(len(tool_defs))
+
+    elif vt == "DynamicPlanReceivedDebug":
+        if props.get("ask"):
+            props["user_ask"] = str(props["ask"])
+        if props.get("summary"):
+            props["plan_summary"] = str(props["summary"])
+
     elif vt == "DynamicPlanFinished":
         props["was_cancelled"] = str(props.get("wasCancelled", False))
+
+    elif vt == "DialogTracingInfo":
+        actions = props.get("actions", [])
+        if isinstance(actions, list):
+            props["action_count"] = str(len(actions))
+            action_types = [a.get("actionType", "") for a in actions if isinstance(a, dict)]
+            props["action_types"] = ", ".join(action_types)
+            topic_ids = sorted(set(
+                a.get("topicId", "") for a in actions if isinstance(a, dict) and a.get("topicId")
+            ))
+            if topic_ids:
+                props["topic_ids"] = ", ".join(topic_ids)
+            exceptions = [
+                a.get("exception", "") for a in actions if isinstance(a, dict) and a.get("exception")
+            ]
+            if exceptions:
+                props["dialog_exceptions"] = "; ".join(exceptions)
 
 
 def _event_label(value_type: str) -> str:
@@ -414,7 +455,7 @@ def _event_label(value_type: str) -> str:
         "DynamicPlanFinished": "Plan Finished",
         "DynamicServerInitialize": "MCP Server Init",
         "DynamicServerToolsList": "MCP Tools List",
-        "DialogTracing": "Dialog Tracing",
+        "DialogTracingInfo": "Dialog Tracing",
         "DialogRedirect": "Dialog Redirect",
         "VariableAssignment": "Variable Assignment",
         "ErrorTraceData": "Error",

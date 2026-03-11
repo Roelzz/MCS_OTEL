@@ -8,6 +8,8 @@ from models import OTELSpanKind
 from parsers import extract_entities, parse_transcript
 
 FIXTURE_PATH = os.path.join(os.path.dirname(__file__), "fixtures", "zava_expense_transcript.json")
+REX_FIXTURE_PATH = os.path.join(os.path.dirname(__file__), "fixtures", "rex_teams_transcript.json")
+PVA_FIXTURE_PATH = os.path.join(os.path.dirname(__file__), "fixtures", "pva_studio_transcript.json")
 
 
 @pytest.fixture
@@ -267,3 +269,240 @@ class TestTraceRichness:
         mcp_spans = find_spans(zava_trace.root_span)
         assert len(mcp_spans) >= 1
         assert mcp_spans[0].attributes["copilot_studio.mcp_tool_count"] == "8"
+
+
+# --- Multi-format fixtures ---
+
+
+@pytest.fixture
+def rex_content():
+    with open(REX_FIXTURE_PATH) as f:
+        return f.read()
+
+
+@pytest.fixture
+def rex_transcript(rex_content):
+    return parse_transcript(rex_content)
+
+
+@pytest.fixture
+def rex_entities(rex_transcript):
+    return extract_entities(rex_transcript)
+
+
+@pytest.fixture
+def rex_trace(rex_entities):
+    spec = generate_default_mapping()
+    return apply_mapping(rex_entities, spec)
+
+
+@pytest.fixture
+def pva_content():
+    with open(PVA_FIXTURE_PATH) as f:
+        return f.read()
+
+
+@pytest.fixture
+def pva_transcript(pva_content):
+    return parse_transcript(pva_content)
+
+
+@pytest.fixture
+def pva_entities(pva_transcript):
+    return extract_entities(pva_transcript)
+
+
+@pytest.fixture
+def pva_trace(pva_entities):
+    spec = generate_default_mapping()
+    return apply_mapping(pva_entities, spec)
+
+
+# --- Fix 2: No SessionInfo fallback ---
+
+
+class TestNoSessionInfo:
+    def test_pva_has_no_session_info_outcome(self, pva_transcript):
+        assert "outcome" not in pva_transcript.session_info
+
+    def test_pva_still_produces_root_entity(self, pva_entities):
+        roots = [e for e in pva_entities if e.entity_id == "session_root"]
+        assert len(roots) == 1
+        assert roots[0].properties["outcome"] == "Unknown"
+        assert roots[0].properties["bot_name"] == "Troubleshoot_bluebot"
+
+    def test_pva_root_span_is_agent_turn(self, pva_trace):
+        assert pva_trace.root_span.attributes["gen_ai.operation.name"] == "agent.turn"
+        assert pva_trace.root_span.kind == OTELSpanKind.SERVER
+
+    def test_pva_conversation_id_in_root(self, pva_entities):
+        root = [e for e in pva_entities if e.entity_id == "session_root"][0]
+        assert root.properties["conversation_id"] == "pva-conv-001"
+
+
+# --- Improvement 4: DynamicPlanReceived enrichment ---
+
+
+class TestPlanReceivedEnrichment:
+    def test_step_count_extracted(self, pva_entities):
+        plans = [e for e in pva_entities if "DynamicPlanReceived_" in e.entity_id]
+        assert len(plans) >= 1
+        assert plans[0].properties["step_count"] == "1"
+
+    def test_is_final_plan_extracted(self, pva_entities):
+        plans = [e for e in pva_entities if "DynamicPlanReceived_" in e.entity_id]
+        assert plans[0].properties["is_final_plan"] == "False"
+
+    def test_tool_definition_count(self, pva_entities):
+        plans = [e for e in pva_entities if "DynamicPlanReceived_" in e.entity_id]
+        assert plans[0].properties["tool_definition_count"] == "1"
+
+    def test_plan_step_count_in_span(self, pva_trace):
+        def find_spans(span):
+            found = []
+            if span.attributes.get("copilot_studio.plan_step_count"):
+                found.append(span)
+            for child in span.children:
+                found.extend(find_spans(child))
+            return found
+
+        plan_spans = find_spans(pva_trace.root_span)
+        assert len(plan_spans) >= 1
+        assert plan_spans[0].attributes["copilot_studio.plan_step_count"] == "1"
+
+
+# --- Improvement 5: DynamicPlanReceivedDebug enrichment ---
+
+
+class TestPlanReceivedDebugEnrichment:
+    def test_user_ask_extracted(self, pva_entities):
+        debugs = [e for e in pva_entities if "DynamicPlanReceivedDebug" in e.entity_id]
+        assert len(debugs) >= 1
+        assert debugs[0].properties["user_ask"] == "trigger topic"
+
+    def test_user_ask_in_span(self, pva_trace):
+        def find_spans(span):
+            found = []
+            if span.attributes.get("copilot_studio.user_ask"):
+                found.append(span)
+            for child in span.children:
+                found.extend(find_spans(child))
+            return found
+
+        debug_spans = find_spans(pva_trace.root_span)
+        assert len(debug_spans) >= 1
+        assert debug_spans[0].attributes["copilot_studio.user_ask"] == "trigger topic"
+
+
+# --- Improvement 6: DialogTracingInfo enrichment ---
+
+
+class TestDialogTracingInfoEnrichment:
+    def test_action_count_extracted(self, pva_entities):
+        dialogs = [e for e in pva_entities if "DialogTracingInfo" in e.entity_id]
+        assert len(dialogs) >= 1
+        # Second DialogTracingInfo has 3 actions
+        multi_action = [e for e in dialogs if e.properties.get("action_count") == "3"]
+        assert len(multi_action) >= 1
+
+    def test_action_types_extracted(self, pva_entities):
+        dialogs = [e for e in pva_entities if "DialogTracingInfo" in e.entity_id]
+        multi = [e for e in dialogs if e.properties.get("action_count") == "3"][0]
+        assert "SetVariable" in multi.properties["action_types"]
+        assert "HttpRequest" in multi.properties["action_types"]
+        assert "SendActivity" in multi.properties["action_types"]
+
+    def test_topic_ids_extracted(self, pva_entities):
+        dialogs = [e for e in pva_entities if "DialogTracingInfo" in e.entity_id]
+        multi = [e for e in dialogs if e.properties.get("action_count") == "3"][0]
+        assert "copilots_header_21961.topic.Trigger" in multi.properties["topic_ids"]
+        assert "copilots_header_21961.topic.Fallback" in multi.properties["topic_ids"]
+
+    def test_exceptions_extracted(self, pva_entities):
+        dialogs = [e for e in pva_entities if "DialogTracingInfo" in e.entity_id]
+        multi = [e for e in dialogs if e.properties.get("action_count") == "3"][0]
+        assert "Connection timeout" in multi.properties["dialog_exceptions"]
+
+    def test_dialog_tracing_span_has_action_types(self, pva_trace):
+        def find_spans(span):
+            found = []
+            if span.attributes.get("copilot_studio.dialog_action_types"):
+                found.append(span)
+            for child in span.children:
+                found.extend(find_spans(child))
+            return found
+
+        dialog_spans = find_spans(pva_trace.root_span)
+        assert len(dialog_spans) >= 1
+
+
+# --- Fix 3: DynamicPlanStepTriggered mapping ---
+
+
+class TestPlanStepTriggeredMapping:
+    def test_thought_in_span(self, pva_trace):
+        def find_spans(span):
+            found = []
+            if span.attributes.get("copilot_studio.thought"):
+                found.append(span)
+            for child in span.children:
+                found.extend(find_spans(child))
+            return found
+
+        thought_spans = find_spans(pva_trace.root_span)
+        assert len(thought_spans) >= 1
+        assert "initiate the requested topic" in thought_spans[0].attributes["copilot_studio.thought"]
+
+    def test_step_type_in_span(self, pva_trace):
+        def find_spans(span):
+            found = []
+            if span.attributes.get("copilot_studio.step_type"):
+                found.append(span)
+            for child in span.children:
+                found.extend(find_spans(child))
+            return found
+
+        type_spans = find_spans(pva_trace.root_span)
+        assert len(type_spans) >= 1
+        assert type_spans[0].attributes["copilot_studio.step_type"] == "CustomTopic"
+
+
+# --- Multi-format traces ---
+
+
+class TestMultiFormatTraces:
+    def test_rex_has_session_info(self, rex_transcript):
+        assert rex_transcript.session_info.get("outcome") == "Resolved"
+
+    def test_rex_root_span_is_agent_turn(self, rex_trace):
+        assert rex_trace.root_span.attributes["gen_ai.operation.name"] == "agent.turn"
+        assert rex_trace.root_span.kind == OTELSpanKind.SERVER
+
+    def test_rex_has_channel_msteams(self, rex_transcript):
+        assert rex_transcript.session_info.get("channel") == "msteams"
+
+    def test_rex_has_tenant(self, rex_transcript):
+        assert rex_transcript.session_info.get("tenant") == "tenant-abc-123"
+
+    def test_rex_bot_name_in_root(self, rex_entities):
+        root = [e for e in rex_entities if e.entity_id == "session_root"][0]
+        assert root.properties["bot_name"] == "Rex Bluebot"
+
+    def test_pva_and_rex_both_valid_traces(self, pva_trace, rex_trace):
+        assert pva_trace.total_spans >= 3
+        assert rex_trace.total_spans >= 3
+        assert pva_trace.root_span.attributes["gen_ai.operation.name"] == "agent.turn"
+        assert rex_trace.root_span.attributes["gen_ai.operation.name"] == "agent.turn"
+
+    def test_rex_thought_in_span(self, rex_trace):
+        def find_spans(span):
+            found = []
+            if span.attributes.get("copilot_studio.thought"):
+                found.append(span)
+            for child in span.children:
+                found.extend(find_spans(child))
+            return found
+
+        thought_spans = find_spans(rex_trace.root_span)
+        assert len(thought_spans) >= 1
+        assert "refund policy" in thought_spans[0].attributes["copilot_studio.thought"]

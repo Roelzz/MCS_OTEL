@@ -407,6 +407,14 @@ def generate_default_mapping() -> MappingSpecification:
                         mcs_property="planIdentifier",
                         otel_attribute="copilot_studio.plan_identifier",
                     ),
+                    AttributeMapping(
+                        mcs_property="step_count",
+                        otel_attribute="copilot_studio.plan_step_count",
+                    ),
+                    AttributeMapping(
+                        mcs_property="is_final_plan",
+                        otel_attribute="copilot_studio.plan_is_final",
+                    ),
                 ],
             ),
             # --- Plan step bind (tool inputs, search queries) ---
@@ -564,6 +572,100 @@ def generate_default_mapping() -> MappingSpecification:
                         otel_attribute="copilot_studio.mcp_tool_names",
                     ),
                 ],
+            ),
+            # --- Plan step triggered (orchestrator reasoning) ---
+            SpanMappingRule(
+                rule_id="plan_step_triggered",
+                rule_name="Plan Step Triggered",
+                mcs_entity_type="trace_event",
+                mcs_value_type="DynamicPlanStepTriggered",
+                otel_operation_name=OTELOperationName.chain,
+                span_name_template="chain step:{taskDialogId}",
+                parent_rule_id="dynamic_plan",
+                attribute_mappings=[
+                    AttributeMapping(
+                        mcs_property="thought",
+                        otel_attribute="copilot_studio.thought",
+                    ),
+                    AttributeMapping(
+                        mcs_property="taskDialogId",
+                        otel_attribute="gen_ai.tool.name",
+                    ),
+                    AttributeMapping(
+                        mcs_property="type",
+                        otel_attribute="copilot_studio.step_type",
+                    ),
+                ],
+            ),
+            # --- Plan received debug (user ask) ---
+            SpanMappingRule(
+                rule_id="plan_received_debug",
+                rule_name="Plan Received Debug",
+                mcs_entity_type="trace_event",
+                mcs_value_type="DynamicPlanReceivedDebug",
+                otel_operation_name=OTELOperationName.chain,
+                span_name_template="chain plan_debug",
+                parent_rule_id="dynamic_plan",
+                attribute_mappings=[
+                    AttributeMapping(
+                        mcs_property="user_ask",
+                        otel_attribute="copilot_studio.user_ask",
+                    ),
+                    AttributeMapping(
+                        mcs_property="plan_summary",
+                        otel_attribute="copilot_studio.plan_summary",
+                    ),
+                ],
+            ),
+            # --- Dialog tracing ---
+            SpanMappingRule(
+                rule_id="dialog_tracing",
+                rule_name="Dialog Tracing",
+                mcs_entity_type="trace_event",
+                mcs_value_type="DialogTracingInfo",
+                otel_operation_name=OTELOperationName.chain,
+                span_name_template="chain dialog_trace",
+                parent_rule_id="user_turn",
+                attribute_mappings=[
+                    AttributeMapping(
+                        mcs_property="action_types",
+                        otel_attribute="copilot_studio.dialog_action_types",
+                    ),
+                    AttributeMapping(
+                        mcs_property="topic_ids",
+                        otel_attribute="copilot_studio.dialog_topic_ids",
+                    ),
+                    AttributeMapping(
+                        mcs_property="dialog_exceptions",
+                        otel_attribute="copilot_studio.dialog_exceptions",
+                    ),
+                    AttributeMapping(
+                        mcs_property="action_count",
+                        otel_attribute="copilot_studio.dialog_action_count",
+                    ),
+                ],
+            ),
+            # --- Error trace ---
+            SpanMappingRule(
+                rule_id="error_trace",
+                rule_name="Error Trace",
+                mcs_entity_type="trace_event",
+                mcs_value_type="ErrorTraceData",
+                otel_operation_name=OTELOperationName.chain,
+                span_name_template="chain error_trace",
+                parent_rule_id="user_turn",
+                attribute_mappings=[],
+            ),
+            # --- Error code ---
+            SpanMappingRule(
+                rule_id="error_code",
+                rule_name="Error Code",
+                mcs_entity_type="trace_event",
+                mcs_value_type="ErrorCode",
+                otel_operation_name=OTELOperationName.chain,
+                span_name_template="chain error_code",
+                parent_rule_id="user_turn",
+                attribute_mappings=[],
             ),
         ],
     )

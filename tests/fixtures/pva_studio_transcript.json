@@ -1,0 +1,175 @@
+[
+  {
+    "type": "message",
+    "id": "msg-bot-greeting",
+    "timestamp": "2026-02-03T09:06:48.6895681+00:00",
+    "channelId": "pva-studio",
+    "from": {"id": "bot-pva-001", "name": "Troubleshoot_bluebot", "role": "bot"},
+    "conversation": {"id": "pva-conv-001"},
+    "text": "Hello, I'm Troubleshoot_bluebot. How can I help?",
+    "channelData": {}
+  },
+  {
+    "type": "event",
+    "id": "dialog-trace-greeting",
+    "timestamp": "2026-02-03T09:06:48.6895715+00:00",
+    "channelId": "pva-studio",
+    "from": {"id": "bot-pva-001", "name": "Troubleshoot_bluebot", "role": "bot"},
+    "conversation": {"id": "pva-conv-001"},
+    "valueType": "DialogTracingInfo",
+    "value": {
+      "actions": [
+        {
+          "actionId": "sendMessage_M0LuhV",
+          "topicId": "copilots_header_21961.topic.ConversationStart",
+          "triggerId": "main",
+          "actionType": "SendActivity",
+          "exception": "",
+          "variableState": {"dialogState": {}, "globalState": {}}
+        }
+      ]
+    },
+    "name": "DialogTracing",
+    "channelData": {}
+  },
+  {
+    "type": "message",
+    "id": "msg-user-1",
+    "timestamp": "2026-02-03T09:08:10.7440000+00:00",
+    "channelId": "webchat",
+    "from": {"id": "user-001", "name": "C2 User", "role": "user"},
+    "conversation": {"id": "pva-conv-001"},
+    "text": "trigger topic",
+    "channelData": {}
+  },
+  {
+    "type": "event",
+    "id": "plan-received-001",
+    "timestamp": "2026-02-03T09:08:12.4449368+00:00",
+    "channelId": "pva-studio",
+    "from": {"id": "bot-pva-001", "name": "Troubleshoot_bluebot", "role": "bot"},
+    "conversation": {"id": "pva-conv-001"},
+    "valueType": "DynamicPlanReceived",
+    "value": {
+      "steps": ["copilots_header_21961.topic.Trigger"],
+      "isFinalPlan": false,
+      "planIdentifier": "plan-pva-001",
+      "toolDefinitions": [
+        {
+          "$kind": "ToolDefinition",
+          "displayName": "Trigger",
+          "description": "When user asks for: Trigger topic",
+          "schemaName": "copilots_header_21961.topic.Trigger",
+          "toolKind": "AdaptiveDialog"
+        }
+      ]
+    },
+    "name": "DynamicPlanReceived",
+    "channelData": {}
+  },
+  {
+    "type": "event",
+    "id": "plan-debug-001",
+    "timestamp": "2026-02-03T09:08:12.4449373+00:00",
+    "channelId": "pva-studio",
+    "from": {"id": "bot-pva-001", "name": "Troubleshoot_bluebot", "role": "bot"},
+    "conversation": {"id": "pva-conv-001"},
+    "valueType": "DynamicPlanReceivedDebug",
+    "value": {
+      "summary": "",
+      "ask": "trigger topic",
+      "planIdentifier": "plan-pva-001",
+      "isFinalPlan": false
+    },
+    "name": "DynamicPlanReceivedDebug",
+    "channelData": {}
+  },
+  {
+    "type": "event",
+    "id": "step-triggered-001",
+    "timestamp": "2026-02-03T09:08:12.4467902+00:00",
+    "channelId": "pva-studio",
+    "from": {"id": "bot-pva-001", "name": "Troubleshoot_bluebot", "role": "bot"},
+    "conversation": {"id": "pva-conv-001"},
+    "valueType": "DynamicPlanStepTriggered",
+    "value": {
+      "planIdentifier": "plan-pva-001",
+      "stepId": "step-pva-001",
+      "taskDialogId": "copilots_header_21961.topic.Trigger",
+      "thought": "This action needs to be done to initiate the requested topic as per the user's instruction.",
+      "state": "inProgress",
+      "hasRecommendations": false,
+      "type": "CustomTopic"
+    },
+    "name": "DynamicPlanStepTriggered",
+    "channelData": {}
+  },
+  {
+    "type": "event",
+    "id": "step-finished-001",
+    "timestamp": "2026-02-03T09:08:14.0000000+00:00",
+    "channelId": "pva-studio",
+    "from": {"id": "bot-pva-001", "name": "Troubleshoot_bluebot", "role": "bot"},
+    "conversation": {"id": "pva-conv-001"},
+    "valueType": "DynamicPlanStepFinished",
+    "value": {
+      "planIdentifier": "plan-pva-001",
+      "stepId": "step-pva-001",
+      "taskDialogId": "copilots_header_21961.topic.Trigger",
+      "state": "completed",
+      "executionTime": "00:00:01.555",
+      "observation": {}
+    },
+    "name": "DynamicPlanStepFinished",
+    "channelData": {}
+  },
+  {
+    "type": "event",
+    "id": "dialog-trace-topic",
+    "timestamp": "2026-02-03T09:08:14.5000000+00:00",
+    "channelId": "pva-studio",
+    "from": {"id": "bot-pva-001", "name": "Troubleshoot_bluebot", "role": "bot"},
+    "conversation": {"id": "pva-conv-001"},
+    "valueType": "DialogTracingInfo",
+    "value": {
+      "actions": [
+        {
+          "actionId": "setVar_001",
+          "topicId": "copilots_header_21961.topic.Trigger",
+          "triggerId": "main",
+          "actionType": "SetVariable",
+          "exception": "",
+          "variableState": {"dialogState": {}, "globalState": {}}
+        },
+        {
+          "actionId": "httpReq_001",
+          "topicId": "copilots_header_21961.topic.Trigger",
+          "triggerId": "main",
+          "actionType": "HttpRequest",
+          "exception": "Connection timeout",
+          "variableState": {"dialogState": {}, "globalState": {}}
+        },
+        {
+          "actionId": "sendMsg_002",
+          "topicId": "copilots_header_21961.topic.Fallback",
+          "triggerId": "main",
+          "actionType": "SendActivity",
+          "exception": "",
+          "variableState": {"dialogState": {}, "globalState": {}}
+        }
+      ]
+    },
+    "name": "DialogTracing",
+    "channelData": {}
+  },
+  {
+    "type": "message",
+    "id": "msg-bot-response-1",
+    "timestamp": "2026-02-03T09:08:15.0000000+00:00",
+    "channelId": "pva-studio",
+    "from": {"id": "bot-pva-001", "name": "Troubleshoot_bluebot", "role": "bot"},
+    "conversation": {"id": "pva-conv-001"},
+    "text": "I triggered the topic for you. Unfortunately there was a connection issue.",
+    "channelData": {}
+  }
+]

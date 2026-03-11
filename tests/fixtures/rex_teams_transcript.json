@@ -1,0 +1,108 @@
+[
+  {
+    "valueType": "ConversationInfo",
+    "type": "trace",
+    "timestamp": 1771240828,
+    "from": {"id": "", "role": 0},
+    "value": {"isDesignMode": false, "locale": "en-US"},
+    "conversation": {"id": "rex-conv-001"}
+  },
+  {
+    "type": "message",
+    "id": "msg-bot-greeting",
+    "timestamp": 1771240830,
+    "from": {"id": "bot-rex-001", "name": "Rex Bluebot", "role": 0},
+    "text": "Hello! I'm Rex Bluebot. How can I help you today?",
+    "channelId": "msteams",
+    "conversation": {"id": "rex-conv-001"},
+    "channelData": {"tenant": {"id": "tenant-abc-123"}}
+  },
+  {
+    "type": "message",
+    "id": "msg-user-1",
+    "timestamp": 1771240860,
+    "from": {"id": "user-001", "name": "Test User", "role": 1},
+    "text": "What is the refund policy?",
+    "channelId": "msteams",
+    "conversation": {"id": "rex-conv-001"}
+  },
+  {
+    "valueType": "DialogRedirect",
+    "id": "redirect-001",
+    "type": "trace",
+    "timestamp": 1771240862,
+    "from": {"id": "bot-rex-001", "role": 0},
+    "value": {"targetDialogId": "topic.RefundPolicy", "targetDialogType": 1},
+    "conversation": {"id": "rex-conv-001"}
+  },
+  {
+    "valueType": "DynamicPlanReceived",
+    "id": "plan-001",
+    "type": "event",
+    "timestamp": 1771240863,
+    "from": {"id": "bot-rex-001", "role": 0},
+    "name": "DynamicPlanReceived",
+    "channelId": "msteams",
+    "value": {
+      "steps": ["P:UniversalSearchTool"],
+      "isFinalPlan": false,
+      "planIdentifier": "plan-id-001"
+    },
+    "conversation": {"id": "rex-conv-001"}
+  },
+  {
+    "valueType": "DynamicPlanStepTriggered",
+    "id": "step-001",
+    "type": "event",
+    "timestamp": 1771240864,
+    "from": {"id": "bot-rex-001", "role": 0},
+    "name": "DynamicPlanStepTriggered",
+    "channelId": "msteams",
+    "value": {
+      "planIdentifier": "plan-id-001",
+      "stepId": "step-id-001",
+      "taskDialogId": "P:UniversalSearchTool",
+      "thought": "The user is asking about the refund policy. I should search the knowledge base.",
+      "state": "inProgress",
+      "type": "KnowledgeSearch"
+    },
+    "conversation": {"id": "rex-conv-001"}
+  },
+  {
+    "valueType": "DynamicPlanFinished",
+    "id": "plan-fin-001",
+    "type": "event",
+    "timestamp": 1771240870,
+    "from": {"id": "bot-rex-001", "role": 0},
+    "name": "DynamicPlanFinished",
+    "channelId": "msteams",
+    "value": {"planId": "plan-id-001", "wasCancelled": false},
+    "conversation": {"id": "rex-conv-001"}
+  },
+  {
+    "type": "message",
+    "id": "msg-bot-response-1",
+    "timestamp": 1771240872,
+    "from": {"id": "bot-rex-001", "name": "Rex Bluebot", "role": 0},
+    "text": "Our refund policy allows returns within 30 days of purchase.",
+    "channelId": "msteams",
+    "conversation": {"id": "rex-conv-001"}
+  },
+  {
+    "valueType": "SessionInfo",
+    "id": "session-001",
+    "type": "trace",
+    "timestamp": 1771240900,
+    "from": {"id": "", "role": 0},
+    "value": {
+      "startTimeUtc": "2026-02-16T11:20:28Z",
+      "endTimeUtc": "2026-02-16T11:21:40Z",
+      "type": "Engaged",
+      "outcome": "Resolved",
+      "turnCount": 1,
+      "impliedSuccess": true,
+      "outcomeReason": "Resolved"
+    },
+    "conversation": {"id": "rex-conv-001"}
+  }
+]

@@ -14,7 +14,7 @@ MCS_ENTITY_LABELS: list[str] = [
     "DynamicServerInitialize",
     "DynamicServerToolsList",
     "DialogRedirect",
-    "DialogTracing",
+    "DialogTracingInfo",
     "VariableAssignment",
     "ErrorTraceData",
 ]
