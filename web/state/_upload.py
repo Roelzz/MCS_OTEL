@@ -3,11 +3,15 @@ import reflex as rx
 from parsers import extract_entities, parse_transcript
 
 
-class UploadMixin:
+class UploadMixin(rx.State, mixin=True):
     raw_content: str = ""
     transcript: dict = {}  # Serialized MCSTranscript
     entities: list[dict] = []  # Serialized MCSEntity list
     upload_error: str = ""
+
+    def set_raw_content(self, value: str):
+        """Set the raw content text area value."""
+        self.raw_content = value
 
     async def handle_upload(self, files: list[rx.UploadFile]):
         """Handle file upload — read first file, parse transcript."""

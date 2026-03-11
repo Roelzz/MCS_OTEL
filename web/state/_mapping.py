@@ -1,6 +1,8 @@
 import json
 import uuid
 
+import reflex as rx
+
 from converter import generate_default_mapping
 from models import (
     AttributeMapping,
@@ -12,11 +14,23 @@ from models import (
 )
 
 
-class MappingMixin:
+class MappingMixin(rx.State, mixin=True):
     mapping_spec: dict = {}  # Serialized MappingSpecification
     selected_rule_id: str = ""
     selected_mcs_entity: str = ""  # Currently clicked MCS entity in connection view
     connections: list[dict] = []  # [{mcs_entity_type, otel_target, rule_id}]
+
+    @rx.var(cache=True)
+    def mapping_rules(self) -> list[dict]:
+        """Return the rules list from mapping_spec for foreach iteration."""
+        if self.mapping_spec and "rules" in self.mapping_spec:
+            return self.mapping_spec["rules"]
+        return []
+
+    @rx.var(cache=True)
+    def has_mapping(self) -> bool:
+        """Whether a mapping spec with rules exists."""
+        return bool(self.mapping_spec and self.mapping_spec.get("rules"))
 
     def select_mcs_entity(self, entity_type: str):
         """First click: highlight MCS entity in connection view."""
@@ -207,3 +221,8 @@ class MappingMixin:
         """Export mapping spec as JSON string."""
         spec = self._get_spec()
         return spec.model_dump_json(indent=2)
+
+    def download_mapping(self):
+        """Trigger download of mapping spec JSON."""
+        data = self.export_mapping()
+        return rx.download(data=data, filename="mapping_spec.json")

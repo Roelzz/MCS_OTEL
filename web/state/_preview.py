@@ -1,10 +1,12 @@
 import json
 
+import reflex as rx
+
 from converter import apply_mapping, to_otlp_json
 from models import MCSEntity, MappingSpecification, OTELSpan
 
 
-class PreviewMixin:
+class PreviewMixin(rx.State, mixin=True):
     preview_spans: list[dict] = []  # Flattened span tree with depth
     preview_trace_id: str = ""
     preview_total_spans: int = 0
@@ -69,3 +71,8 @@ class PreviewMixin:
         service_name = spec.service_name
         otlp = to_otlp_json(trace, service_name)
         return json.dumps(otlp, indent=2)
+
+    def download_otlp(self):
+        """Trigger download of OTLP JSON."""
+        data = self.export_otlp_json()
+        return rx.download(data=data, filename="otlp_trace.json")
