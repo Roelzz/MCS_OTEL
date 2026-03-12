@@ -25,6 +25,7 @@ from analyze_transcripts import (
     analyze_file,
     build_mapping_gap_analysis,
     discover_files,
+    iter_transcripts,
     suggest_attribute_mappings,
     suggest_mapping_rule,
 )
@@ -117,7 +118,7 @@ def analyze_corpus(
     """
     files = discover_files([input_dir])
     if not files:
-        logger.warning("No JSON files found in {}", input_dir)
+        logger.warning("No transcript files found in {}", input_dir)
         return [], {}, {}, {}
 
     # Build lookup: value_type -> set of mapped mcs_property
@@ -133,8 +134,8 @@ def analyze_corpus(
     unknown_samples: dict[str, dict] = {}
     unmapped_props_agg: dict[str, set[str]] = {}
 
-    for fpath in files:
-        fa = _analyze_single_file(fpath, spec, tracked_types, mapped_by_vt)
+    for label, content in iter_transcripts(files):
+        fa = _analyze_single_content(label, content, spec, tracked_types, mapped_by_vt)
         file_analyses.append(fa)
 
         if not fa.success:
@@ -153,6 +154,68 @@ def analyze_corpus(
             unmapped_props_agg[vt].update(props)
 
     return file_analyses, unknown_types_count, unknown_samples, unmapped_props_agg
+
+
+def _analyze_single_content(
+    label: str,
+    content: str,
+    spec: MappingSpecification,
+    tracked_types: set[str],
+    mapped_by_vt: dict[str, set[str]],
+) -> FileAnalysis:
+    """Analyze a single transcript content string through the full pipeline."""
+    fa = FileAnalysis(path=label, success=False)
+
+    try:
+        transcript = parse_transcript(content)
+        entities = extract_entities(transcript)
+    except Exception as e:
+        fa.error = str(e)
+        logger.debug("Failed to parse {}: {}", label, e)
+        return fa
+
+    fa.success = True
+    fa.activity_count = len(transcript.activities)
+    fa.entity_count = len(entities)
+
+    for ent in entities:
+        vt = ent.value_type
+        if not vt:
+            continue
+        fa.value_types[vt] = fa.value_types.get(vt, 0) + 1
+
+        if vt not in tracked_types and ent.entity_type == "trace_event":
+            if vt not in fa.unknown_types:
+                fa.unknown_types[vt] = ent.properties
+
+        if vt in tracked_types and vt in mapped_by_vt:
+            mapped_props = mapped_by_vt[vt]
+            skip_props = {"timestamp", "actions", "steps", "toolDefinitions", "observation", "content"}
+            available = set(ent.properties.keys()) - skip_props - {"timestamp"}
+            unmapped = available - mapped_props
+            if unmapped:
+                if vt not in fa.unmapped_props:
+                    fa.unmapped_props[vt] = set()
+                fa.unmapped_props[vt].update(unmapped)
+
+    try:
+        trace = apply_mapping(entities, spec)
+        fa.span_count = trace.total_spans
+
+        total_attrs = 0
+        filled_attrs = 0
+        _count_attributes(trace.root_span, total_attrs, filled_attrs)
+        counts = _count_attributes_recursive(trace.root_span)
+        total_attrs, filled_attrs = counts
+        fa.attribute_fill_rate = filled_attrs / total_attrs if total_attrs > 0 else 0.0
+
+        _detect_empty_spans(trace.root_span, fa.empty_spans)
+
+    except Exception as e:
+        logger.debug("Failed to apply mapping to {}: {}", label, e)
+        fa.error = f"mapping: {e}"
+
+    return fa
 
 
 def _analyze_single_file(

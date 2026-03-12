@@ -1,7 +1,9 @@
 """Transcript analysis CLI — scans MCS transcripts and reports coverage gaps."""
 
+import csv
 import json
 import os
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -54,17 +56,87 @@ class ValueTypeStats:
 
 
 def discover_files(paths: list[Path]) -> list[Path]:
-    """Glob *.json / **/dialog.json in given dirs, dedupe."""
+    """Glob *.json and *.csv in given dirs, dedupe."""
     found: dict[str, Path] = {}
 
     for p in paths:
-        if p.is_file() and p.suffix == ".json":
+        if p.is_file() and p.suffix in {".json", ".csv"}:
             found[str(p.resolve())] = p.resolve()
         elif p.is_dir():
-            for f in p.glob("**/*.json"):
-                found[str(f.resolve())] = f.resolve()
+            for ext in ("**/*.json", "**/*.csv"):
+                for f in p.glob(ext):
+                    found[str(f.resolve())] = f.resolve()
 
     return sorted(found.values())
+
+
+def iter_transcripts(paths: list[Path]) -> Iterator[tuple[str, str]]:
+    """Yield (source_label, content_string) from JSON files and CSV rows.
+
+    JSON files: yield (filename, file_content) — one transcript per file.
+    CSV files: yield (filename:row_N, content_column) — one transcript per row.
+
+    CSV detection: looks for 'content' column (Dataverse export format).
+    """
+    for path in paths:
+        if path.suffix == ".csv":
+            try:
+                with path.open(encoding="utf-8") as f:
+                    reader = csv.DictReader(f)
+                    if reader.fieldnames and "content" not in reader.fieldnames:
+                        logger.warning("CSV {} has no 'content' column, skipping", path.name)
+                        continue
+                    for row_num, row in enumerate(reader, start=1):
+                        content = row.get("content", "").strip()
+                        if content:
+                            yield f"{path.name}:row_{row_num}", content
+            except Exception as e:
+                logger.warning("Skipping CSV {} — {}", path.name, e)
+        else:
+            try:
+                content = path.read_text(encoding="utf-8")
+                yield path.name, content
+            except Exception as e:
+                logger.warning("Skipping {} — {}", path.name, e)
+
+
+def analyze_content(source_label: str, content: str) -> FileStats | None:
+    """Analyze a transcript content string for valueType coverage."""
+    stats = FileStats(path=Path(source_label))
+
+    try:
+        raw_activities = _resolve_activities(content)
+    except Exception as e:
+        logger.warning("Skipping {} — {}", source_label, e)
+        return None
+
+    stats.activity_count = len(raw_activities)
+
+    try:
+        transcript = parse_transcript(content)
+        stats.bot_name = transcript.bot_name
+        stats.conversation_id = transcript.conversation_id
+    except Exception as e:
+        logger.debug("Could not parse transcript metadata for {}: {}", source_label, e)
+
+    for raw in raw_activities:
+        vt = raw.get("valueType", "") or raw.get("name", "") or ""
+        if not vt:
+            continue
+
+        stats.value_type_counts[vt] = stats.value_type_counts.get(vt, 0) + 1
+
+        value = raw.get("value", {})
+        if isinstance(value, dict) and value:
+            props = set(value.keys())
+            if vt not in stats.value_type_props:
+                stats.value_type_props[vt] = set()
+            stats.value_type_props[vt].update(props)
+
+            if vt not in stats.value_type_samples:
+                stats.value_type_samples[vt] = value
+
+    return stats
 
 
 def analyze_file(path: Path) -> FileStats | None:
@@ -447,24 +519,24 @@ def main(
 
     files = discover_files(paths)
     if not files:
-        logger.error("No JSON files found.")
+        logger.error("No transcript files found.")
         raise typer.Exit(1)
 
-    logger.info("Found {} JSON files", len(files))
+    logger.info("Found {} files (JSON + CSV)", len(files))
 
-    # Analyze each file
+    # Analyze each transcript (JSON files yield 1, CSV files yield N rows)
     file_stats_list: list[FileStats] = []
-    for f in files:
-        logger.debug("Analyzing {}", f)
-        result = analyze_file(f)
+    for label, content in iter_transcripts(files):
+        logger.debug("Analyzing {}", label)
+        result = analyze_content(label, content)
         if result:
             file_stats_list.append(result)
 
     if not file_stats_list:
-        logger.error("No files could be analyzed.")
+        logger.error("No transcripts could be analyzed.")
         raise typer.Exit(1)
 
-    logger.info("Successfully analyzed {} files", len(file_stats_list))
+    logger.info("Successfully analyzed {} transcripts", len(file_stats_list))
 
     # Aggregate and analyze
     stats = aggregate_stats(file_stats_list)

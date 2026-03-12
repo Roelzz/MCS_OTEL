@@ -1,11 +1,13 @@
 """Tests for the self-learning mapper improvement engine."""
 
+import csv
 import json
 import shutil
 from pathlib import Path
 
 import pytest
 
+from analyze_transcripts import discover_files, iter_transcripts
 from converter import generate_default_mapping
 from improve import (
     FileAnalysis,
@@ -90,21 +92,24 @@ def nested_unknown_samples() -> dict[str, dict]:
 
 class TestAnalyzeCorpus:
     def test_analyzes_fixtures(self, fixtures_dir: Path, default_spec, tracked_types):
-        """Fixture files should all be analyzed successfully."""
-        json_files = list(fixtures_dir.glob("*.json"))
-        if not json_files:
-            pytest.skip("No JSON fixtures available")
+        """Fixture files (JSON + CSV rows) should all be analyzed successfully."""
+        files = discover_files([fixtures_dir])
+        if not files:
+            pytest.skip("No fixture files available")
+
+        # Count expected transcripts: 1 per JSON, N rows per CSV
+        expected = sum(1 for _ in iter_transcripts(files))
 
         results, _, _, _ = analyze_corpus(fixtures_dir, default_spec, tracked_types)
         successful = [r for r in results if r.success]
         assert len(successful) > 0
-        assert len(successful) == len(json_files)
+        assert len(successful) == expected
 
     def test_counts_value_types(self, fixtures_dir: Path, default_spec, tracked_types):
         """Known value types should be counted correctly."""
-        json_files = list(fixtures_dir.glob("*.json"))
-        if not json_files:
-            pytest.skip("No JSON fixtures available")
+        files = discover_files([fixtures_dir])
+        if not files:
+            pytest.skip("No fixture files available")
 
         results, _, _, _ = analyze_corpus(fixtures_dir, default_spec, tracked_types)
         successful = [r for r in results if r.success]
@@ -436,3 +441,69 @@ class TestImprovementLoop:
         # Should produce at least one run with 0 files
         assert len(runs) >= 1
         assert runs[0].file_count == 0
+
+
+# ---------------------------------------------------------------------------
+# TestCSVSupport
+# ---------------------------------------------------------------------------
+
+
+class TestCSVSupport:
+    def test_discover_files_finds_csv(self, fixtures_dir: Path):
+        """discover_files() should find both JSON and CSV files."""
+        files = discover_files([fixtures_dir])
+        suffixes = {f.suffix for f in files}
+        assert ".json" in suffixes
+        assert ".csv" in suffixes
+
+    def test_iter_transcripts_yields_csv_rows(self, fixtures_dir: Path):
+        """iter_transcripts() should yield one entry per CSV row."""
+        csv_files = [f for f in discover_files([fixtures_dir]) if f.suffix == ".csv"]
+        assert len(csv_files) >= 1
+
+        results = list(iter_transcripts(csv_files))
+        # sample_dataverse.csv has 2 rows
+        assert len(results) == 2
+        assert results[0][0] == "sample_dataverse.csv:row_1"
+        assert results[1][0] == "sample_dataverse.csv:row_2"
+        # Content should be parseable JSON arrays
+        for label, content in results:
+            parsed = json.loads(content)
+            assert isinstance(parsed, list)
+
+    def test_iter_transcripts_yields_json_files(self, fixtures_dir: Path):
+        """iter_transcripts() should yield one entry per JSON file."""
+        json_files = [f for f in discover_files([fixtures_dir]) if f.suffix == ".json"]
+        results = list(iter_transcripts(json_files))
+        assert len(results) == len(json_files)
+        for label, content in results:
+            assert label.endswith(".json")
+
+    def test_csv_without_content_column_skipped(self, tmp_path: Path):
+        """CSV without 'content' column should be skipped."""
+        csv_path = tmp_path / "bad.csv"
+        csv_path.write_text("id,name\n1,test\n")
+
+        results = list(iter_transcripts([csv_path]))
+        assert len(results) == 0
+
+    def test_analyze_corpus_processes_csv(self, fixtures_dir: Path, default_spec, tracked_types):
+        """analyze_corpus() should process CSV rows as individual transcripts."""
+        results, _, _, _ = analyze_corpus(fixtures_dir, default_spec, tracked_types)
+        # Should have results from both JSON files and CSV rows
+        csv_results = [r for r in results if ":row_" in r.path]
+        assert len(csv_results) == 2
+        assert all(r.success for r in csv_results)
+
+    def test_csv_fixture_has_valid_transcripts(self, fixtures_dir: Path):
+        """CSV fixture rows should contain valid transcript JSON."""
+        csv_path = fixtures_dir / "sample_dataverse.csv"
+        results = list(iter_transcripts([csv_path]))
+        for label, content in results:
+            activities = json.loads(content)
+            assert isinstance(activities, list)
+            assert len(activities) > 0
+            # Should have at least a ConversationInfo trace and a message
+            types = {a.get("type") for a in activities}
+            assert "trace" in types
+            assert "message" in types
