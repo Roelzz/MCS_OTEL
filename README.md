@@ -30,16 +30,18 @@ MCS_OTEL/
 ├── converter.py             # Entity → OTEL span mapping, OTLP JSON export
 ├── otel_registry.py         # 56 OTEL attribute definitions across 10 categories
 ├── analyze_transcripts.py   # CLI: transcript coverage analysis
+├── improve.py               # Self-learning mapper improvement engine
 ├── pyproject.toml           # Project config and dependencies
 ├── web/
-│   ├── web.py               # Reflex frontend layout
-│   ├── components/          # UI components (upload, mapping editor, span tree, export)
-│   └── state/               # Reflex state managers (upload, mapping, preview)
+│   ├── web.py               # Reflex frontend layout + /improve route
+│   ├── components/          # UI components (upload, mapping editor, span tree, export, improve dashboard)
+│   └── state/               # Reflex state managers (upload, mapping, preview, improve)
 ├── tests/
 │   ├── test_parsers.py      # Parser unit tests
 │   ├── test_models.py       # Model unit tests
 │   ├── test_converter.py    # Converter unit tests
 │   ├── test_enrichment.py   # Entity enrichment tests
+│   ├── test_improve.py      # Improvement engine tests
 │   └── fixtures/            # Sample transcript JSON files
 └── docs/
     ├── gap-analysis.md            # Capability gap analysis (42 capabilities)
@@ -110,9 +112,66 @@ session_root (agent.turn)
         └── mcp_server_init_confirmation (create_agent)
 ```
 
+## Self-Learning Improvement Loop
+
+Uses hundreds of real transcripts as a training corpus to iteratively improve the mapper. Auto-fixes obvious gaps, presents ambiguous ones for human review.
+
+### Quick Start (CLI)
+
+```bash
+uv run python improve.py /path/to/transcripts/
+```
+
+### CLI Flags
+
+- `-n` / `--max-iterations` — max improvement iterations (default: 5)
+- `--min-files` — min file count for auto-fix threshold (default: 3)
+- `-o` / `--output` — output directory for results (default: `improve_runs/`)
+- `-v` / `--verbose` — enable verbose logging
+
+### Web Dashboard
+
+```bash
+uv run reflex run
+# Navigate to http://localhost:3000/improve
+```
+
+The dashboard provides:
+- **Controls** — set input directory, max iterations, min files threshold
+- **Iteration timeline** — cards showing coverage%, fill rate, auto-fixes per iteration
+- **Coverage chart** — line chart showing improvement across iterations
+- **Pending review** — findings needing human decision with accept/reject buttons
+- **Code export** — generated code changes per target file
+- **Apply to source** — writes accepted changes directly to `parsers.py`, `converter.py`, `otel_registry.py`
+
+### How It Works
+
+1. **Scan** — discover all `.json` transcripts in the input directory
+2. **Analyze** — process each through the full pipeline, collect unknown types, unmapped properties, empty spans, coverage metrics
+3. **Classify** — sort findings into auto-fix (type in >= 3 files) vs needs-review (nested structures, rare types)
+4. **Apply** — auto-fixes modify the in-memory mapping spec; needs-review items presented as suggestions
+5. **Re-analyze** — run again with improved mapping, measure delta
+6. **Report** — per-iteration summary + code export with all changes
+
+### What Gets Improved
+
+| File | Improvements |
+|------|-------------|
+| `parsers.py` | New types in `TRACKED_EVENT_TYPES`, new enrichment blocks |
+| `converter.py` | New `SpanMappingRule` entries, new `AttributeMapping` entries |
+| `otel_registry.py` | New `OTELAttribute` entries in `MCS_CUSTOM_ATTRIBUTES` |
+
+### Output
+
+Results are saved to `improve_runs/`:
+- `iter_N_<hash>.json` — per-iteration metrics and findings
+- `code_export.py` — all code changes ready to copy into source files
+- `improved_mapping.json` — the final improved mapping specification
+
 ## Next Steps
 
 - **Gather more transcripts** — export from Copilot Studio Analytics, Dataverse `conversationtranscript` table, or Test Canvas
+- **Run the improvement loop** to auto-discover and fix mapping gaps
 - **Run the analysis CLI** after adding new transcripts to find gaps
 - **Review `docs/transcript_analysis.md`** for suggested mapping updates
 - **Implement suggested mappings** in `converter.py` and `parsers.py`

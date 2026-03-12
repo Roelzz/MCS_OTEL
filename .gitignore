@@ -34,5 +34,8 @@ Thumbs.db
 # Worktrees
 .worktrees/
 
+# Improvement engine output
+improve_runs/
+
 # Claude
 .claude/

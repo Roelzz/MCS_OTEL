@@ -7,6 +7,7 @@ from web.components import (
     mapping_editor,
     span_tree,
     export_panel,
+    improve_page,
 )
 from web.state import State  # noqa: F401 — must import so Reflex registers state
 
@@ -55,3 +56,4 @@ app = rx.App(
 )
 
 app.add_page(index_page, route="/")
+app.add_page(improve_page, route="/improve", title="Improve Mapping")
