@@ -4,7 +4,7 @@ Converts Microsoft Copilot Studio conversation transcripts into OpenTelemetry-co
 
 ## Features
 
-- Upload MCS transcript JSON (dialog.json / Dataverse export / Rex format)
+- Upload MCS transcript JSON or Dataverse CSV (dialog.json / Dataverse export / Rex format)
 - Visual ETL mapping UI (React Flow) — drag-and-drop MCS entities to OTEL targets
 - 19 default mapping rules covering 18 event types
 - Live span tree preview with OTLP JSON export
@@ -42,7 +42,7 @@ MCS_OTEL/
 │   ├── test_converter.py    # Converter unit tests
 │   ├── test_enrichment.py   # Entity enrichment tests
 │   ├── test_improve.py      # Improvement engine tests
-│   └── fixtures/            # Sample transcript JSON files
+│   └── fixtures/            # Sample transcript JSON + CSV files
 └── docs/
     ├── gap-analysis.md            # Capability gap analysis (42 capabilities)
     └── transcript_analysis.md     # Generated: valueType coverage report
@@ -58,14 +58,17 @@ Scans all available transcripts, cross-references every `valueType` against `TRA
 # Default: scan tests/fixtures/ and Agent_analyser/ directories
 uv run python analyze_transcripts.py
 
-# Scan specific directory
+# Scan specific directory (JSON + CSV files)
 uv run python analyze_transcripts.py tests/fixtures/
+
+# Scan a Dataverse CSV export directly
+uv run python analyze_transcripts.py samples/conversationtranscripts.csv
 
 # Custom output path with verbose logging
 uv run python analyze_transcripts.py -o custom_report.md -v
 
 # Scan multiple paths
-uv run python analyze_transcripts.py tests/fixtures/ /path/to/more/transcripts/
+uv run python analyze_transcripts.py tests/fixtures/ samples/
 ```
 
 ### Output Report
@@ -119,7 +122,14 @@ Uses hundreds of real transcripts as a training corpus to iteratively improve th
 ### Quick Start (CLI)
 
 ```bash
+# Point at a directory of JSON files
 uv run python improve.py /path/to/transcripts/
+
+# Point at a Dataverse CSV export (one transcript per row in 'content' column)
+uv run python improve.py /path/to/conversationtranscripts.csv
+
+# Point directly at the samples directory
+uv run python improve.py samples/
 ```
 
 ### CLI Flags
@@ -146,8 +156,8 @@ The dashboard provides:
 
 ### How It Works
 
-1. **Scan** — discover all `.json` transcripts in the input directory
-2. **Analyze** — process each through the full pipeline, collect unknown types, unmapped properties, empty spans, coverage metrics
+1. **Scan** — discover all `.json` and `.csv` files in the input directory (CSV: each row with a `content` column yields one transcript; handles Dataverse BOM encoding)
+2. **Analyze** — process each transcript through the full pipeline, collect unknown types, unmapped properties, empty spans, coverage metrics
 3. **Classify** — sort findings into auto-fix (type in >= 3 files) vs needs-review (nested structures, rare types)
 4. **Apply** — auto-fixes modify the in-memory mapping spec; needs-review items presented as suggestions
 5. **Re-analyze** — run again with improved mapping, measure delta
@@ -170,7 +180,7 @@ Results are saved to `improve_runs/`:
 
 ## Next Steps
 
-- **Gather more transcripts** — export from Copilot Studio Analytics, Dataverse `conversationtranscript` table, or Test Canvas
+- **Gather more transcripts** — export from Copilot Studio Analytics, Dataverse `conversationtranscript` table (CSV with `content` column), or Test Canvas
 - **Run the improvement loop** to auto-discover and fix mapping gaps
 - **Run the analysis CLI** after adding new transcripts to find gaps
 - **Review `docs/transcript_analysis.md`** for suggested mapping updates
