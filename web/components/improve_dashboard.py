@@ -30,7 +30,7 @@ def _controls() -> rx.Component:
                     rx.text("Max iterations", size="1", weight="medium"),
                     rx.input(
                         value=State.improve_max_iterations.to(str),
-                        on_change=lambda v: State.set_improve_max_iterations(int(v) if v.isdigit() else 5),
+                        on_change=State.set_improve_max_iterations,
                         width="80px",
                     ),
                 ),
@@ -38,7 +38,7 @@ def _controls() -> rx.Component:
                     rx.text("Min files", size="1", weight="medium"),
                     rx.input(
                         value=State.improve_min_files.to(str),
-                        on_change=lambda v: State.set_improve_min_files(int(v) if v.isdigit() else 3),
+                        on_change=State.set_improve_min_files,
                         width="80px",
                     ),
                 ),
@@ -58,10 +58,7 @@ def _controls() -> rx.Component:
                     color_scheme="green",
                     size="2",
                 ),
-                rx.cond(
-                    State.improve_progress != "",
-                    rx.text(State.improve_progress, size="2", color_scheme="gray"),
-                ),
+                rx.text(State.improve_progress, size="2", color_scheme="gray"),
                 spacing="3",
                 align="center",
             ),
@@ -97,16 +94,12 @@ def _iteration_card(iteration: dict) -> rx.Component:
     """Single iteration card."""
     return rx.card(
         rx.vstack(
-            rx.text(iteration["run_id"], size="1", weight="bold", trim="both"),
+            rx.text(iteration["run_id"].to(str), size="1", weight="bold", trim="both"),
             rx.hstack(
                 rx.vstack(
                     rx.text("Coverage", size="1", color_scheme="gray"),
                     rx.text(
-                        rx.cond(
-                            iteration["avg_coverage"] > 0,
-                            iteration["avg_coverage"].to(str) + "%",
-                            "0%",
-                        ),
+                        iteration["avg_coverage"].to(str),
                         size="3",
                         weight="bold",
                     ),
@@ -125,24 +118,18 @@ def _iteration_card(iteration: dict) -> rx.Component:
             ),
             rx.hstack(
                 rx.badge(
-                    iteration["auto_applied_count"].to(str) + " auto-fixed",
+                    iteration["auto_applied_count"].to(str),
                     color_scheme="green",
                     size="1",
                 ),
+                rx.text("auto-fixed", size="1"),
                 rx.badge(
-                    iteration["needs_review_count"].to(str) + " review",
+                    iteration["needs_review_count"].to(str),
                     color_scheme="orange",
                     size="1",
                 ),
-                spacing="2",
-            ),
-            rx.cond(
-                iteration["delta_coverage"] > 0,
-                rx.text(
-                    "+" + iteration["delta_coverage"].to(str) + "%",
-                    size="1",
-                    color="green",
-                ),
+                rx.text("review", size="1"),
+                spacing="1",
             ),
             spacing="2",
         ),
@@ -194,7 +181,7 @@ def _pending_review() -> rx.Component:
             ),
             rx.foreach(
                 State.pending_review,
-                lambda finding, idx: _review_item(finding, idx),
+                _review_item,
             ),
             spacing="3",
             width="100%",
@@ -202,52 +189,20 @@ def _pending_review() -> rx.Component:
     )
 
 
-def _review_item(finding: dict, index: rx.Var[int]) -> rx.Component:
-    """Single review item with accept/reject buttons."""
+def _review_item(finding: dict) -> rx.Component:
+    """Single review item."""
     return rx.card(
         rx.vstack(
             rx.hstack(
-                rx.badge(finding["category"], color_scheme="purple", size="1"),
-                rx.text(finding["value_type"], weight="bold", size="2"),
-                rx.cond(
-                    finding["property_name"] != "",
-                    rx.text("." + finding["property_name"], size="2", color_scheme="gray"),
-                ),
-                rx.cond(
-                    finding["file_count"] > 0,
-                    rx.badge(finding["file_count"].to(str) + " files", size="1"),
-                ),
+                rx.badge(finding["category"].to(str), color_scheme="purple", size="1"),
+                rx.text(finding["value_type"].to(str), weight="bold", size="2"),
+                rx.text(finding["property_name"].to(str), size="2", color_scheme="gray"),
                 spacing="2",
                 align="center",
             ),
-            rx.cond(
-                finding["code_snippet"] != "",
-                rx.box(
-                    rx.code_block(
-                        finding["code_snippet"],
-                        language="python",
-                    ),
-                    width="100%",
-                    max_height="200px",
-                    overflow_y="auto",
-                ),
-            ),
-            rx.hstack(
-                rx.button(
-                    "Accept",
-                    on_click=State.accept_finding(index),
-                    color_scheme="green",
-                    size="1",
-                    variant="outline",
-                ),
-                rx.button(
-                    "Reject",
-                    on_click=State.reject_finding(index),
-                    color_scheme="red",
-                    size="1",
-                    variant="outline",
-                ),
-                spacing="2",
+            rx.code_block(
+                finding["code_snippet"].to(str),
+                language="python",
             ),
             spacing="2",
         ),
@@ -258,7 +213,7 @@ def _review_item(finding: dict, index: rx.Var[int]) -> rx.Component:
 def _code_export() -> rx.Component:
     """Collapsible sections per target file showing generated code."""
     return rx.cond(
-        State.code_export.length() > 0,
+        State.code_export_list.length() > 0,
         rx.vstack(
             rx.heading("Code Export", size="3"),
             rx.text(
@@ -267,13 +222,8 @@ def _code_export() -> rx.Component:
                 color_scheme="gray",
             ),
             rx.foreach(
-                State.code_export,
-                lambda item: rx.box(
-                    rx.text(item[0], weight="bold", size="2"),
-                    rx.code_block(item[1], language="python"),
-                    width="100%",
-                    padding_bottom="1em",
-                ),
+                State.code_export_list,
+                _code_section,
             ),
             rx.button(
                 "Apply to Source Files",
@@ -284,6 +234,16 @@ def _code_export() -> rx.Component:
             spacing="3",
             width="100%",
         ),
+    )
+
+
+def _code_section(item: dict) -> rx.Component:
+    """Single code section for a file."""
+    return rx.box(
+        rx.text(item["file"].to(str), weight="bold", size="2"),
+        rx.code_block(item["code"].to(str), language="python"),
+        width="100%",
+        padding_bottom="1em",
     )
 
 

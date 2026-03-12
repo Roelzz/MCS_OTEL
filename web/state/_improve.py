@@ -25,6 +25,21 @@ class ImproveMixin(rx.State, mixin=True):
     pending_review: list[dict] = []
     code_export: dict[str, str] = {}
 
+    def set_improve_input_dir(self, value: str):
+        self.improve_input_dir = value
+
+    def set_improve_max_iterations(self, value: str):
+        try:
+            self.improve_max_iterations = int(value)
+        except (ValueError, TypeError):
+            pass
+
+    def set_improve_min_files(self, value: str):
+        try:
+            self.improve_min_files = int(value)
+        except (ValueError, TypeError):
+            pass
+
     @rx.var
     def coverage_trend(self) -> list[dict]:
         """Chart data: [{iteration, coverage, fill_rate}]."""
@@ -36,6 +51,11 @@ class ImproveMixin(rx.State, mixin=True):
             }
             for i, it in enumerate(self.iterations)
         ]
+
+    @rx.var
+    def code_export_list(self) -> list[dict]:
+        """Convert code_export dict to list for rx.foreach."""
+        return [{"file": k, "code": v} for k, v in self.code_export.items()]
 
     @rx.var
     def has_pending(self) -> bool:
