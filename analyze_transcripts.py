@@ -81,7 +81,8 @@ def iter_transcripts(paths: list[Path]) -> Iterator[tuple[str, str]]:
     for path in paths:
         if path.suffix == ".csv":
             try:
-                with path.open(encoding="utf-8") as f:
+                csv.field_size_limit(10 * 1024 * 1024)  # 10 MB — Dataverse transcripts can be large
+                with path.open(encoding="utf-8-sig") as f:
                     reader = csv.DictReader(f)
                     if reader.fieldnames and "content" not in reader.fieldnames:
                         logger.warning("CSV {} has no 'content' column, skipping", path.name)

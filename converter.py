@@ -490,6 +490,14 @@ def generate_default_mapping() -> MappingSpecification:
                         mcs_property="think_time_ms",
                         otel_attribute="mcs.orchestrator.think_time_ms",
                     ),
+                    AttributeMapping(
+                        mcs_property="parentPlanIdentifier",
+                        otel_attribute="mcs.plan.parent_id",
+                    ),
+                    AttributeMapping(
+                        mcs_property="parentPlanStepIdentifier",
+                        otel_attribute="mcs.plan.parent_step_id",
+                    ),
                 ],
             ),
             # --- Plan step bind (tool inputs, search queries) ---
@@ -521,6 +529,18 @@ def generate_default_mapping() -> MappingSpecification:
                     AttributeMapping(
                         mcs_property="mcp_tool_name",
                         otel_attribute="mcs.mcp.tool_name",
+                    ),
+                    AttributeMapping(
+                        mcs_property="planIdentifier",
+                        otel_attribute="mcs.plan.id",
+                    ),
+                    AttributeMapping(
+                        mcs_property="stepId",
+                        otel_attribute="mcs.plan.step_id",
+                    ),
+                    AttributeMapping(
+                        mcs_property="autoFilledArguments",
+                        otel_attribute="mcs.step.auto_filled_arguments",
                     ),
                 ],
             ),
@@ -583,6 +603,18 @@ def generate_default_mapping() -> MappingSpecification:
                         mcs_property="plan_used_outputs",
                         otel_attribute="mcs.plan.used_outputs",
                     ),
+                    AttributeMapping(
+                        mcs_property="planIdentifier",
+                        otel_attribute="mcs.plan.id",
+                    ),
+                    AttributeMapping(
+                        mcs_property="stepId",
+                        otel_attribute="mcs.plan.step_id",
+                    ),
+                    AttributeMapping(
+                        mcs_property="hasRecommendations",
+                        otel_attribute="mcs.step.has_recommendations",
+                    ),
                 ],
             ),
             # --- Plan finished ---
@@ -618,6 +650,10 @@ def generate_default_mapping() -> MappingSpecification:
                     AttributeMapping(
                         mcs_property="targetDialogId",
                         otel_attribute="mcs.topic.name",
+                    ),
+                    AttributeMapping(
+                        mcs_property="targetDialogType",
+                        otel_attribute="mcs.topic.type",
                     ),
                 ],
             ),
@@ -699,6 +735,22 @@ def generate_default_mapping() -> MappingSpecification:
                         mcs_property="type",
                         otel_attribute="mcs.step.type",
                     ),
+                    AttributeMapping(
+                        mcs_property="planIdentifier",
+                        otel_attribute="mcs.plan.id",
+                    ),
+                    AttributeMapping(
+                        mcs_property="stepId",
+                        otel_attribute="mcs.plan.step_id",
+                    ),
+                    AttributeMapping(
+                        mcs_property="state",
+                        otel_attribute="mcs.step.state",
+                    ),
+                    AttributeMapping(
+                        mcs_property="hasRecommendations",
+                        otel_attribute="mcs.step.has_recommendations",
+                    ),
                 ],
             ),
             # --- Plan received debug (user ask) ---
@@ -718,6 +770,10 @@ def generate_default_mapping() -> MappingSpecification:
                     AttributeMapping(
                         mcs_property="plan_summary",
                         otel_attribute="mcs.orchestrator.plan_summary",
+                    ),
+                    AttributeMapping(
+                        mcs_property="planIdentifier",
+                        otel_attribute="mcs.plan.id",
                     ),
                 ],
             ),
@@ -763,6 +819,7 @@ def generate_default_mapping() -> MappingSpecification:
                     AttributeMapping(mcs_property="errorCode", otel_attribute="error.type"),
                     AttributeMapping(mcs_property="errorMessage", otel_attribute="error.message"),
                     AttributeMapping(mcs_property="isUserError", otel_attribute="mcs.error.is_user_error"),
+                    AttributeMapping(mcs_property="errorSubCode", otel_attribute="mcs.error.sub_code"),
                 ],
             ),
             # --- Error code (as event on turn) ---
@@ -794,6 +851,8 @@ def generate_default_mapping() -> MappingSpecification:
                     AttributeMapping(mcs_property="name", otel_attribute="mcs.variable.name"),
                     AttributeMapping(mcs_property="value", otel_attribute="mcs.variable.value"),
                     AttributeMapping(mcs_property="type", otel_attribute="mcs.variable.type"),
+                    AttributeMapping(mcs_property="id", otel_attribute="mcs.variable.id"),
+                    AttributeMapping(mcs_property="newValue", otel_attribute="mcs.variable.new_value"),
                 ],
             ),
             # --- Unknown intent (as event on turn) ---
@@ -819,7 +878,12 @@ def generate_default_mapping() -> MappingSpecification:
                 otel_operation_name=OTELOperationName.create_agent,
                 span_name_template="create_agent mcp_init_confirm",
                 parent_rule_id="mcp_server_init",
-                attribute_mappings=[],
+                attribute_mappings=[
+                    AttributeMapping(
+                        mcs_property="dialogSchemaName",
+                        otel_attribute="mcs.mcp.dialog_schema",
+                    ),
+                ],
             ),
             # --- Protocol info ---
             SpanMappingRule(
