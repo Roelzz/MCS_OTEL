@@ -4,12 +4,13 @@ from web.state import State
 
 
 def _span_row(span: rx.Var[dict]) -> rx.Component:
-    """Single span row in the tree."""
+    """Single span or event row in the tree."""
     depth = span["depth"].to(int)
     name = span["name"].to(str)
     duration = span["duration_ms"].to(float)
     child_count = span["child_count"].to(int)
     span_id = span["span_id"].to(str)
+    is_event = span["is_event"].to(bool)
 
     return rx.hstack(
         # Indentation based on depth
@@ -23,23 +24,39 @@ def _span_row(span: rx.Var[dict]) -> rx.Component:
         rx.cond(
             depth > 0,
             rx.text(
-                "+-",
+                rx.cond(is_event, "* ", "+- "),
                 size="1",
-                color="var(--gray-8)",
+                color=rx.cond(is_event, "var(--orange-8)", "var(--gray-8)"),
                 font_family="monospace",
             ),
             rx.fragment(),
         ),
-        # Dot indicator
-        rx.box(
-            width="8px",
-            height="8px",
-            border_radius="50%",
-            background="var(--green-9)",
-            flex_shrink="0",
+        # Dot indicator — diamond for events, circle for spans
+        rx.cond(
+            is_event,
+            rx.box(
+                width="8px",
+                height="8px",
+                background="var(--orange-9)",
+                flex_shrink="0",
+                transform="rotate(45deg)",
+            ),
+            rx.box(
+                width="8px",
+                height="8px",
+                border_radius="50%",
+                background="var(--green-9)",
+                flex_shrink="0",
+            ),
         ),
-        # Span name
-        rx.text(name, size="2", weight="medium", flex="1"),
+        # Name
+        rx.text(
+            name,
+            size="2",
+            weight="medium",
+            flex="1",
+            font_style=rx.cond(is_event, "italic", "normal"),
+        ),
         # Child count
         rx.cond(
             child_count > 0,
@@ -51,12 +68,21 @@ def _span_row(span: rx.Var[dict]) -> rx.Component:
             ),
             rx.fragment(),
         ),
-        # Duration
-        rx.text(
-            duration.to(str) + " ms",
-            size="1",
-            color="var(--gray-9)",
-            font_family="JetBrains Mono, monospace",
+        # Duration (only for spans)
+        rx.cond(
+            is_event,
+            rx.text(
+                "event",
+                size="1",
+                color="var(--orange-9)",
+                font_family="JetBrains Mono, monospace",
+            ),
+            rx.text(
+                duration.to(str) + " ms",
+                size="1",
+                color="var(--gray-9)",
+                font_family="JetBrains Mono, monospace",
+            ),
         ),
         spacing="2",
         width="100%",

@@ -142,9 +142,11 @@ def apply_mapping(
         conv_id = first.properties.get("conversation_id", "") or first.entity_id
     trace_id = _md5_hex(conv_id)
 
-    # Phase 1: create spans per rule, track which rule produced which spans
+    # Phase 1: create spans/events per rule
     rule_spans: dict[str, list[OTELSpan]] = defaultdict(list)
     all_spans: list[OTELSpan] = []
+    # Events to attach to parent spans (rule_id -> list of event dicts with parent info)
+    pending_events: list[dict] = []
 
     for rule in spec.rules:
         matched = [e for e in entities if _matches_rule(e, rule)]
@@ -153,9 +155,7 @@ def apply_mapping(
         )
 
         for entity in matched:
-            span_id = _md5_hex(
-                f"{trace_id}:{rule.rule_id}:{entity.entity_id}", 16
-            )
+            start_ns, end_ns = _extract_timestamps(entity)
 
             # Build name from template
             name_ctx = _DefaultDict(entity.properties)
@@ -173,8 +173,6 @@ def apply_mapping(
                 else rule.otel_operation_name.value
             )
 
-            start_ns, end_ns = _extract_timestamps(entity)
-
             # Apply attribute mappings
             attributes: dict[str, str] = {}
             attributes["gen_ai.operation.name"] = rule.otel_operation_name.value
@@ -186,22 +184,36 @@ def apply_mapping(
                 if value is not None:
                     attributes[am.otel_attribute] = value
 
-            span = OTELSpan(
-                trace_id=trace_id,
-                span_id=span_id,
-                name=name,
-                kind=rule.otel_span_kind,
-                start_time_ns=start_ns,
-                end_time_ns=end_ns,
-                attributes=attributes,
-            )
+            if rule.output_type == "event":
+                # Queue as event to attach to parent span
+                pending_events.append({
+                    "name": name,
+                    "timestamp_ns": start_ns,
+                    "attributes": attributes,
+                    "parent_rule_id": rule.parent_rule_id,
+                    "rule_id": rule.rule_id,
+                })
+            else:
+                span_id = _md5_hex(
+                    f"{trace_id}:{rule.rule_id}:{entity.entity_id}", 16
+                )
 
-            rule_spans[rule.rule_id].append(span)
-            all_spans.append(span)
+                span = OTELSpan(
+                    trace_id=trace_id,
+                    span_id=span_id,
+                    name=name,
+                    kind=rule.otel_span_kind,
+                    start_time_ns=start_ns,
+                    end_time_ns=end_ns,
+                    attributes=attributes,
+                )
+
+                rule_spans[rule.rule_id].append(span)
+                all_spans.append(span)
 
     # Phase 2: build parent-child tree
     for rule in spec.rules:
-        if not rule.parent_rule_id:
+        if not rule.parent_rule_id or rule.output_type == "event":
             continue
         parent_candidates = rule_spans.get(rule.parent_rule_id, [])
         if not parent_candidates:
@@ -246,6 +258,17 @@ def apply_mapping(
             span.parent_span_id = root_span.span_id
             root_span.children.append(span)
 
+    # Attach pending events to their parent spans (or root)
+    for evt in pending_events:
+        parent_rule_id = evt["parent_rule_id"]
+        parent_candidates = rule_spans.get(parent_rule_id, []) if parent_rule_id else []
+        target_span = parent_candidates[0] if parent_candidates else root_span
+        target_span.events.append({
+            "name": evt["name"],
+            "timeUnixNano": evt["timestamp_ns"],
+            "attributes": evt["attributes"],
+        })
+
     # Adjust root span timing to cover all children
     if root_span.children:
         all_starts = [s.start_time_ns for s in all_spans if s.start_time_ns > 0]
@@ -287,14 +310,18 @@ def generate_default_mapping() -> MappingSpecification:
                 rule_name="Session Root Span",
                 mcs_entity_type="trace_event",
                 mcs_value_type="SessionInfo",
-                otel_operation_name=OTELOperationName.agent_turn,
+                otel_operation_name=OTELOperationName.invoke_agent,
                 otel_span_kind=OTELSpanKind.SERVER,
-                span_name_template="agent.turn {bot_name}",
+                span_name_template="invoke_agent {bot_name}",
                 is_root=True,
                 attribute_mappings=[
                     AttributeMapping(
                         mcs_property="outcome",
-                        otel_attribute="copilot_studio.session_outcome",
+                        otel_attribute="mcs.session.outcome",
+                    ),
+                    AttributeMapping(
+                        mcs_property="session_type",
+                        otel_attribute="mcs.session.type",
                     ),
                     AttributeMapping(
                         mcs_property="bot_name",
@@ -305,16 +332,22 @@ def generate_default_mapping() -> MappingSpecification:
                         otel_attribute="gen_ai.conversation.id",
                     ),
                     AttributeMapping(
+                        mcs_property="",
+                        otel_attribute="gen_ai.provider.name",
+                        transform=TransformType.constant,
+                        transform_value="copilot_studio",
+                    ),
+                    AttributeMapping(
                         mcs_property="channel",
-                        otel_attribute="channel",
+                        otel_attribute="mcs.channel",
                     ),
                     AttributeMapping(
                         mcs_property="environment",
-                        otel_attribute="environment",
+                        otel_attribute="mcs.environment",
                     ),
                     AttributeMapping(
                         mcs_property="tenant",
-                        otel_attribute="tenant",
+                        otel_attribute="mcs.tenant",
                     ),
                 ],
             ),
@@ -323,9 +356,9 @@ def generate_default_mapping() -> MappingSpecification:
                 rule_id="user_turn",
                 rule_name="User-Bot Turn",
                 mcs_entity_type="turn",
-                otel_operation_name=OTELOperationName.gen_ai_chat,
+                otel_operation_name=OTELOperationName.chat,
                 otel_span_kind=OTELSpanKind.CLIENT,
-                span_name_template="gen_ai.chat turn:{turn_index}",
+                span_name_template="chat turn:{turn_index}",
                 parent_rule_id="session_root",
                 attribute_mappings=[
                     AttributeMapping(
@@ -350,11 +383,11 @@ def generate_default_mapping() -> MappingSpecification:
                     ),
                     AttributeMapping(
                         mcs_property="topic_name",
-                        otel_attribute="topic.name",
+                        otel_attribute="mcs.topic.name",
                     ),
                     AttributeMapping(
                         mcs_property="turn_index",
-                        otel_attribute="conversation.turn",
+                        otel_attribute="mcs.turn.index",
                     ),
                 ],
             ),
@@ -381,15 +414,15 @@ def generate_default_mapping() -> MappingSpecification:
                     ),
                     AttributeMapping(
                         mcs_property="knowledge_sources",
-                        otel_attribute="knowledge_source",
+                        otel_attribute="mcs.knowledge.sources",
                     ),
                     AttributeMapping(
                         mcs_property="knowledge_source_count",
-                        otel_attribute="retrieval.document_count",
+                        otel_attribute="mcs.knowledge.source_count",
                     ),
                     AttributeMapping(
                         mcs_property="output_knowledge_sources",
-                        otel_attribute="copilot_studio.output_knowledge_sources",
+                        otel_attribute="mcs.knowledge.output_sources",
                     ),
                 ],
             ),
@@ -405,15 +438,15 @@ def generate_default_mapping() -> MappingSpecification:
                 attribute_mappings=[
                     AttributeMapping(
                         mcs_property="planIdentifier",
-                        otel_attribute="copilot_studio.plan_identifier",
+                        otel_attribute="mcs.plan.id",
                     ),
                     AttributeMapping(
                         mcs_property="step_count",
-                        otel_attribute="copilot_studio.plan_step_count",
+                        otel_attribute="mcs.plan.step_count",
                     ),
                     AttributeMapping(
                         mcs_property="is_final_plan",
-                        otel_attribute="copilot_studio.plan_is_final",
+                        otel_attribute="mcs.plan.is_final",
                     ),
                 ],
             ),
@@ -437,7 +470,7 @@ def generate_default_mapping() -> MappingSpecification:
                     ),
                     AttributeMapping(
                         mcs_property="search_keywords",
-                        otel_attribute="copilot_studio.search_keywords",
+                        otel_attribute="mcs.search.keywords",
                     ),
                     AttributeMapping(
                         mcs_property="arguments_json",
@@ -445,7 +478,7 @@ def generate_default_mapping() -> MappingSpecification:
                     ),
                     AttributeMapping(
                         mcs_property="mcp_tool_name",
-                        otel_attribute="copilot_studio.mcp_tool_name",
+                        otel_attribute="mcs.mcp.tool_name",
                     ),
                 ],
             ),
@@ -455,9 +488,9 @@ def generate_default_mapping() -> MappingSpecification:
                 rule_name="Plan Step Finished (Tool Output)",
                 mcs_entity_type="trace_event",
                 mcs_value_type="DynamicPlanStepFinished",
-                otel_operation_name=OTELOperationName.tool_execute,
+                otel_operation_name=OTELOperationName.execute_tool,
                 otel_span_kind=OTELSpanKind.CLIENT,
-                span_name_template="tool.execute {taskDialogId}",
+                span_name_template="execute_tool {taskDialogId}",
                 parent_rule_id="dynamic_plan",
                 attribute_mappings=[
                     AttributeMapping(
@@ -466,11 +499,11 @@ def generate_default_mapping() -> MappingSpecification:
                     ),
                     AttributeMapping(
                         mcs_property="executionTime",
-                        otel_attribute="copilot_studio.execution_time",
+                        otel_attribute="mcs.tool.execution_time",
                     ),
                     AttributeMapping(
                         mcs_property="state",
-                        otel_attribute="copilot_studio.step_state",
+                        otel_attribute="mcs.tool.step_state",
                     ),
                     AttributeMapping(
                         mcs_property="tool_result_text",
@@ -478,31 +511,31 @@ def generate_default_mapping() -> MappingSpecification:
                     ),
                     AttributeMapping(
                         mcs_property="tool_is_error",
-                        otel_attribute="copilot_studio.tool_is_error",
+                        otel_attribute="mcs.tool.is_error",
                     ),
                     AttributeMapping(
                         mcs_property="retrieval_document_count",
-                        otel_attribute="retrieval.document_count",
+                        otel_attribute="mcs.retrieval.document_count",
                     ),
                     AttributeMapping(
                         mcs_property="retrieval_document_names",
-                        otel_attribute="copilot_studio.retrieval_documents",
+                        otel_attribute="mcs.retrieval.documents",
                     ),
                     AttributeMapping(
                         mcs_property="retrieval_source_types",
-                        otel_attribute="copilot_studio.retrieval_source_type",
+                        otel_attribute="mcs.retrieval.source_type",
                     ),
                     AttributeMapping(
                         mcs_property="retrieval_errors",
-                        otel_attribute="copilot_studio.retrieval_errors",
+                        otel_attribute="mcs.retrieval.errors",
                     ),
                     AttributeMapping(
                         mcs_property="connector_result_url",
-                        otel_attribute="copilot_studio.connector_result_url",
+                        otel_attribute="mcs.connector.result_url",
                     ),
                     AttributeMapping(
                         mcs_property="hitl_responder_id",
-                        otel_attribute="copilot_studio.hitl_responder_id",
+                        otel_attribute="mcs.hitl.responder_id",
                     ),
                 ],
             ),
@@ -518,11 +551,11 @@ def generate_default_mapping() -> MappingSpecification:
                 attribute_mappings=[
                     AttributeMapping(
                         mcs_property="planId",
-                        otel_attribute="copilot_studio.plan_identifier",
+                        otel_attribute="mcs.plan.id",
                     ),
                     AttributeMapping(
                         mcs_property="was_cancelled",
-                        otel_attribute="copilot_studio.plan_was_cancelled",
+                        otel_attribute="mcs.plan.was_cancelled",
                     ),
                 ],
             ),
@@ -532,13 +565,13 @@ def generate_default_mapping() -> MappingSpecification:
                 rule_name="Topic Classification",
                 mcs_entity_type="trace_event",
                 mcs_value_type="DialogRedirect",
-                otel_operation_name=OTELOperationName.topic_classification,
-                span_name_template="topic_classification",
+                otel_operation_name=OTELOperationName.dialog_redirect,
+                span_name_template="dialog_redirect",
                 parent_rule_id="user_turn",
                 attribute_mappings=[
                     AttributeMapping(
                         mcs_property="targetDialogId",
-                        otel_attribute="topic.name",
+                        otel_attribute="mcs.topic.name",
                     ),
                 ],
             ),
@@ -565,11 +598,11 @@ def generate_default_mapping() -> MappingSpecification:
                 attribute_mappings=[
                     AttributeMapping(
                         mcs_property="tool_count",
-                        otel_attribute="copilot_studio.mcp_tool_count",
+                        otel_attribute="mcs.mcp.tool_count",
                     ),
                     AttributeMapping(
                         mcs_property="tool_names",
-                        otel_attribute="copilot_studio.mcp_tool_names",
+                        otel_attribute="mcs.mcp.tool_names",
                     ),
                 ],
             ),
@@ -585,7 +618,7 @@ def generate_default_mapping() -> MappingSpecification:
                 attribute_mappings=[
                     AttributeMapping(
                         mcs_property="thought",
-                        otel_attribute="copilot_studio.thought",
+                        otel_attribute="mcs.orchestrator.thought",
                     ),
                     AttributeMapping(
                         mcs_property="taskDialogId",
@@ -593,7 +626,7 @@ def generate_default_mapping() -> MappingSpecification:
                     ),
                     AttributeMapping(
                         mcs_property="type",
-                        otel_attribute="copilot_studio.step_type",
+                        otel_attribute="mcs.step.type",
                     ),
                 ],
             ),
@@ -609,11 +642,11 @@ def generate_default_mapping() -> MappingSpecification:
                 attribute_mappings=[
                     AttributeMapping(
                         mcs_property="user_ask",
-                        otel_attribute="copilot_studio.user_ask",
+                        otel_attribute="mcs.orchestrator.user_ask",
                     ),
                     AttributeMapping(
                         mcs_property="plan_summary",
-                        otel_attribute="copilot_studio.plan_summary",
+                        otel_attribute="mcs.orchestrator.plan_summary",
                     ),
                 ],
             ),
@@ -629,42 +662,192 @@ def generate_default_mapping() -> MappingSpecification:
                 attribute_mappings=[
                     AttributeMapping(
                         mcs_property="action_types",
-                        otel_attribute="copilot_studio.dialog_action_types",
+                        otel_attribute="mcs.dialog.action_types",
                     ),
                     AttributeMapping(
                         mcs_property="topic_ids",
-                        otel_attribute="copilot_studio.dialog_topic_ids",
+                        otel_attribute="mcs.dialog.topic_ids",
                     ),
                     AttributeMapping(
                         mcs_property="dialog_exceptions",
-                        otel_attribute="copilot_studio.dialog_exceptions",
+                        otel_attribute="mcs.dialog.exceptions",
                     ),
                     AttributeMapping(
                         mcs_property="action_count",
-                        otel_attribute="copilot_studio.dialog_action_count",
+                        otel_attribute="mcs.dialog.action_count",
                     ),
                 ],
             ),
-            # --- Error trace ---
+            # --- Error trace (as event on turn) ---
             SpanMappingRule(
                 rule_id="error_trace",
                 rule_name="Error Trace",
                 mcs_entity_type="trace_event",
                 mcs_value_type="ErrorTraceData",
                 otel_operation_name=OTELOperationName.chain,
-                span_name_template="chain error_trace",
+                span_name_template="error",
+                output_type="event",
                 parent_rule_id="user_turn",
                 attribute_mappings=[],
             ),
-            # --- Error code ---
+            # --- Error code (as event on turn) ---
             SpanMappingRule(
                 rule_id="error_code",
                 rule_name="Error Code",
                 mcs_entity_type="trace_event",
                 mcs_value_type="ErrorCode",
                 otel_operation_name=OTELOperationName.chain,
-                span_name_template="chain error_code",
+                span_name_template="error_code",
+                output_type="event",
                 parent_rule_id="user_turn",
+                attribute_mappings=[],
+            ),
+            # --- Variable assignment (as event on turn) ---
+            SpanMappingRule(
+                rule_id="variable_assignment",
+                rule_name="Variable Assignment",
+                mcs_entity_type="trace_event",
+                mcs_value_type="VariableAssignment",
+                otel_operation_name=OTELOperationName.chain,
+                span_name_template="variable_assignment",
+                output_type="event",
+                parent_rule_id="user_turn",
+                attribute_mappings=[],
+            ),
+            # --- Unknown intent (as event on turn) ---
+            SpanMappingRule(
+                rule_id="unknown_intent",
+                rule_name="Unknown Intent",
+                mcs_entity_type="trace_event",
+                mcs_value_type="UnknownIntent",
+                otel_operation_name=OTELOperationName.intent_recognition,
+                span_name_template="unknown_intent",
+                output_type="event",
+                parent_rule_id="user_turn",
+                attribute_mappings=[],
+            ),
+            # --- MCP server init confirmation ---
+            SpanMappingRule(
+                rule_id="mcp_server_init_confirmation",
+                rule_name="MCP Server Init Confirmation",
+                mcs_entity_type="trace_event",
+                mcs_value_type="DynamicServerInitializeConfirmation",
+                otel_operation_name=OTELOperationName.create_agent,
+                span_name_template="create_agent mcp_init_confirm",
+                parent_rule_id="mcp_server_init",
+                attribute_mappings=[],
+            ),
+            # --- Protocol info ---
+            SpanMappingRule(
+                rule_id="protocol_info",
+                rule_name="Protocol Info",
+                mcs_entity_type="trace_event",
+                mcs_value_type="ProtocolInfo",
+                otel_operation_name=OTELOperationName.chain,
+                span_name_template="chain protocol_info",
+                parent_rule_id="user_turn",
+                attribute_mappings=[],
+            ),
+            # --- Skill info ---
+            SpanMappingRule(
+                rule_id="skill_info",
+                rule_name="Skill Info",
+                mcs_entity_type="trace_event",
+                mcs_value_type="SkillInfo",
+                otel_operation_name=OTELOperationName.create_agent,
+                span_name_template="create_agent skill_info",
+                parent_rule_id="user_turn",
+                attribute_mappings=[],
+            ),
+            # --- CSAT response (as event on root) ---
+            SpanMappingRule(
+                rule_id="csat_response",
+                rule_name="CSAT Response",
+                mcs_entity_type="trace_event",
+                mcs_value_type="CSATSurveyResponse",
+                otel_operation_name=OTELOperationName.chain,
+                span_name_template="csat_response",
+                output_type="event",
+                parent_rule_id="session_root",
+                attribute_mappings=[
+                    AttributeMapping(
+                        mcs_property="",
+                        otel_attribute="gen_ai.evaluation.name",
+                        transform=TransformType.constant,
+                        transform_value="csat",
+                    ),
+                    AttributeMapping(
+                        mcs_property="csat_score",
+                        otel_attribute="gen_ai.evaluation.score.value",
+                    ),
+                    AttributeMapping(
+                        mcs_property="csat_comment",
+                        otel_attribute="gen_ai.evaluation.score.label",
+                    ),
+                ],
+            ),
+            # --- PRR response (as event on root) ---
+            SpanMappingRule(
+                rule_id="prr_response",
+                rule_name="PRR Response",
+                mcs_entity_type="trace_event",
+                mcs_value_type="PRRSurveyResponse",
+                otel_operation_name=OTELOperationName.chain,
+                span_name_template="prr_response",
+                output_type="event",
+                parent_rule_id="session_root",
+                attribute_mappings=[
+                    AttributeMapping(
+                        mcs_property="",
+                        otel_attribute="gen_ai.evaluation.name",
+                        transform=TransformType.constant,
+                        transform_value="prr",
+                    ),
+                    AttributeMapping(
+                        mcs_property="prr_response",
+                        otel_attribute="gen_ai.evaluation.score.value",
+                    ),
+                ],
+            ),
+            # --- Implied success (as event on root) ---
+            SpanMappingRule(
+                rule_id="implied_success",
+                rule_name="Implied Success",
+                mcs_entity_type="trace_event",
+                mcs_value_type="ImpliedSuccess",
+                otel_operation_name=OTELOperationName.chain,
+                span_name_template="implied_success",
+                output_type="event",
+                parent_rule_id="session_root",
+                attribute_mappings=[
+                    AttributeMapping(
+                        mcs_property="implied_success_dialog_id",
+                        otel_attribute="mcs.dialog.id",
+                    ),
+                ],
+            ),
+            # --- Escalation (as event on root) ---
+            SpanMappingRule(
+                rule_id="escalation",
+                rule_name="Escalation Requested",
+                mcs_entity_type="trace_event",
+                mcs_value_type="EscalationRequested",
+                otel_operation_name=OTELOperationName.chain,
+                span_name_template="escalation",
+                output_type="event",
+                parent_rule_id="session_root",
+                attribute_mappings=[],
+            ),
+            # --- HandOff (as event on root) ---
+            SpanMappingRule(
+                rule_id="handoff",
+                rule_name="HandOff",
+                mcs_entity_type="trace_event",
+                mcs_value_type="HandOff",
+                otel_operation_name=OTELOperationName.chain,
+                span_name_template="handoff",
+                output_type="event",
+                parent_rule_id="session_root",
                 attribute_mappings=[],
             ),
         ],
@@ -681,7 +864,7 @@ def _flatten_spans(span: OTELSpan) -> list[OTELSpan]:
 
 def _span_to_otlp(span: OTELSpan) -> dict:
     """Convert a single OTELSpan to OTLP JSON format."""
-    return {
+    otlp: dict = {
         "traceId": span.trace_id,
         "spanId": span.span_id,
         "parentSpanId": span.parent_span_id or "",
@@ -695,6 +878,22 @@ def _span_to_otlp(span: OTELSpan) -> dict:
         ],
         "status": {"code": 1 if span.status == "OK" else 2},
     }
+
+    # Serialize events if present
+    if span.events:
+        otlp["events"] = [
+            {
+                "name": evt["name"],
+                "timeUnixNano": str(evt["timeUnixNano"]),
+                "attributes": [
+                    {"key": k, "value": {"stringValue": str(v)}}
+                    for k, v in evt.get("attributes", {}).items()
+                ],
+            }
+            for evt in span.events
+        ]
+
+    return otlp
 
 
 def to_otlp_json(trace: OTELTrace, service_name: str) -> dict:

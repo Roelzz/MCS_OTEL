@@ -3,7 +3,7 @@ import json
 import reflex as rx
 
 from converter import apply_mapping, to_otlp_json
-from models import MCSEntity, MappingSpecification, OTELSpan
+from models import MappingSpecification, MCSEntity, OTELSpan
 
 
 class PreviewMixin(rx.State, mixin=True):
@@ -34,7 +34,7 @@ class PreviewMixin(rx.State, mixin=True):
             self.preview_spans = []
 
     def _flatten_tree(self, span: OTELSpan, depth: int) -> list[dict]:
-        """Recursively flatten span tree with depth metadata."""
+        """Recursively flatten span tree with depth metadata, including events."""
         result = [
             {
                 "span_id": span.span_id,
@@ -49,8 +49,26 @@ class PreviewMixin(rx.State, mixin=True):
                 "attributes": span.attributes,
                 "status": span.status,
                 "child_count": len(span.children),
+                "is_event": False,
+                "event_count": len(span.events),
             }
         ]
+        # Show events on this span (indented one level deeper)
+        for evt in span.events:
+            result.append({
+                "span_id": f"{span.span_id}_evt_{evt.get('name', '')}",
+                "name": evt.get("name", "event"),
+                "kind": "EVENT",
+                "start_time_ns": evt.get("timeUnixNano", 0),
+                "end_time_ns": evt.get("timeUnixNano", 0),
+                "duration_ms": 0.0,
+                "depth": depth + 1,
+                "attributes": evt.get("attributes", {}),
+                "status": "OK",
+                "child_count": 0,
+                "is_event": True,
+                "event_count": 0,
+            })
         for child in span.children:
             result.extend(self._flatten_tree(child, depth + 1))
         return result

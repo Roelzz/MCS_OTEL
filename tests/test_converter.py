@@ -58,10 +58,10 @@ class TestApplyMapping:
         trace2 = apply_mapping(entities, default_spec)
         assert trace1.trace_id == trace2.trace_id
 
-    def test_root_span_is_agent_turn(self, trace):
+    def test_root_span_is_invoke_agent(self, trace):
         assert (
-            "agent.turn" in trace.root_span.name
-            or trace.root_span.attributes.get("gen_ai.operation.name") == "agent.turn"
+            "invoke_agent" in trace.root_span.name
+            or trace.root_span.attributes.get("gen_ai.operation.name") == "invoke_agent"
         )
 
     def test_root_has_children(self, trace):

@@ -130,6 +130,8 @@ class MappingMixin(rx.State, mixin=True):
                     rule.rule_name = value
                 elif field == "otel_span_kind":
                     rule.otel_span_kind = OTELSpanKind(value)
+                elif field == "output_type":
+                    rule.output_type = value if value in ("span", "event") else "span"
                 break
         self.mapping_spec = spec.model_dump()
 

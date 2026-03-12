@@ -53,11 +53,17 @@ class TestOTELModels:
         assert OTELSpanKind.CLIENT == "CLIENT"
 
     def test_operation_name_enum(self):
-        assert OTELOperationName.gen_ai_chat == "gen_ai.chat"
-        assert OTELOperationName.agent_turn == "agent.turn"
-        assert OTELOperationName.tool_execute == "tool.execute"
+        assert OTELOperationName.invoke_agent == "invoke_agent"
+        assert OTELOperationName.chat == "chat"
+        assert OTELOperationName.execute_tool == "execute_tool"
         assert OTELOperationName.knowledge_retrieval == "knowledge.retrieval"
-        assert OTELOperationName.topic_classification == "topic_classification"
+        assert OTELOperationName.dialog_redirect == "dialog_redirect"
+        assert OTELOperationName.intent_recognition == "intent_recognition"
+        assert OTELOperationName.execute_node == "execute_node"
+        # Backward compat aliases
+        assert OTELOperationName.agent_turn == "agent.turn"
+        assert OTELOperationName.gen_ai_chat == "gen_ai.chat"
+        assert OTELOperationName.tool_execute == "tool.execute"
 
 
 class TestMappingModels:
@@ -70,11 +76,12 @@ class TestMappingModels:
         r = SpanMappingRule(
             rule_id="test",
             mcs_entity_type="trace_event",
-            otel_operation_name=OTELOperationName.gen_ai_chat,
+            otel_operation_name=OTELOperationName.chat,
         )
         assert r.is_root is False
         assert r.parent_rule_id is None
         assert r.otel_span_kind == OTELSpanKind.INTERNAL
+        assert r.output_type == "span"
 
     def test_mapping_spec_roundtrip(self):
         spec = MappingSpecification(

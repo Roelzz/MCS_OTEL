@@ -12,6 +12,8 @@ def _rule_card(rule: rx.Var[dict]) -> rx.Component:
     span_name = rule["span_name_template"].to(str)
     parent_id = rule["parent_rule_id"].to(str)
     is_root = rule["is_root"].to(bool)
+    output_type = rule["output_type"].to(str)
+    is_event = output_type == "event"
 
     return rx.card(
         rx.vstack(
@@ -24,6 +26,11 @@ def _rule_card(rule: rx.Var[dict]) -> rx.Component:
                 ),
                 rx.icon("arrow_right", size=14),
                 rx.badge(otel_op, color_scheme="green"),
+                rx.cond(
+                    is_event,
+                    rx.badge("event", color_scheme="orange", size="1"),
+                    rx.badge("span", color_scheme="blue", size="1"),
+                ),
                 rx.spacer(),
                 rx.icon_button(
                     rx.icon("trash_2", size=14),
@@ -50,9 +57,18 @@ def _rule_card(rule: rx.Var[dict]) -> rx.Component:
                 ),
                 width="100%",
             ),
-            # Parent + root toggle
+            # Output type + Parent + root toggle
             rx.hstack(
-                rx.text("Parent:", size="2", width="80px"),
+                rx.text("Output:", size="2", width="80px"),
+                rx.select(
+                    ["span", "event"],
+                    value=output_type,
+                    size="2",
+                    on_change=lambda v: State.update_rule_field(
+                        rule_id, "output_type", v
+                    ),
+                ),
+                rx.text("Parent:", size="2"),
                 rx.input(
                     value=parent_id,
                     size="2",

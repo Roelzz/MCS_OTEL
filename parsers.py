@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 from loguru import logger
 
-from models import MCSActivity, MCSEntity, MCSTranscript
+from models import MCSActivity, MCSEntity, MCSTranscript, parse_activity_value
 
 logger.remove()
 logger.add(
@@ -82,12 +82,22 @@ TRACKED_EVENT_TYPES = {
     "DynamicPlanReceivedDebug",
     "DynamicPlanStepBindUpdate",
     "DynamicServerInitialize",
+    "DynamicServerInitializeConfirmation",
     "DynamicServerToolsList",
     "DialogTracingInfo",
     "DialogRedirect",
     "VariableAssignment",
     "ErrorTraceData",
     "ErrorCode",
+    "ProtocolInfo",
+    "UnknownIntent",
+    "SkillInfo",
+    # Evaluation and success tracking
+    "CSATSurveyResponse",
+    "CSATSurveyRequest",
+    "PRRSurveyResponse",
+    "PRRSurveyRequest",
+    "ImpliedSuccess",
 }
 
 
@@ -129,6 +139,18 @@ def _parse_activity(raw: dict, index: int) -> MCSActivity:
     # Determine value_type: trace activities use valueType, events use name
     value_type = raw.get("valueType", "") or raw.get("name", "") or ""
 
+    # Parse value through typed model if available
+    raw_value = raw.get("value", {}) or {}
+    if value_type and isinstance(raw_value, dict):
+        typed_value = parse_activity_value(value_type, raw_value)
+        # Convert typed model back to dict for downstream compatibility
+        if hasattr(typed_value, "model_dump"):
+            value = typed_value.model_dump(exclude_none=True)
+        else:
+            value = typed_value
+    else:
+        value = raw_value
+
     return MCSActivity(
         id=str(activity_id),
         type=raw.get("type", ""),
@@ -136,7 +158,7 @@ def _parse_activity(raw: dict, index: int) -> MCSActivity:
         from_role=role,
         text=raw.get("text", "") or "",
         value_type=value_type,
-        value=raw.get("value", {}) or {},
+        value=value,
         channel_data=raw.get("channelData", {}) or {},
         channel_id=raw.get("channelId", "") or "",
     )
@@ -236,7 +258,7 @@ def parse_transcript(content: str) -> MCSTranscript:
 
 
 def _extract_turns(activities: list[MCSActivity]) -> list[dict]:
-    """Group activities into user-initiated turns (user msg + bot response)."""
+    """Group activities into turns, including turn_0 for greeting."""
     sorted_acts = sorted(activities, key=lambda a: a.timestamp)
 
     user_indices = [
@@ -246,6 +268,30 @@ def _extract_turns(activities: list[MCSActivity]) -> list[dict]:
     ]
 
     turns = []
+
+    # Turn 0: collect bot activities before first user message (greeting)
+    if user_indices:
+        first_user_idx = user_indices[0]
+        pre_user_acts = sorted_acts[:first_user_idx]
+    else:
+        pre_user_acts = sorted_acts
+
+    bot_greetings = [a for a in pre_user_acts if a.type == "message" and a.from_role == ROLE_BOT and a.text]
+    if bot_greetings:
+        first_bot = bot_greetings[0]
+        greeting_text = " | ".join(a.text for a in bot_greetings)
+        turns.append({
+            "user_msg": "",
+            "bot_msg": greeting_text,
+            "user_ts": 0,
+            "bot_ts": first_bot.timestamp,
+            "topic_name": "",
+            "action_type": "",
+            "turn_index": "0",
+            "is_greeting": True,
+        })
+
+    # User-initiated turns
     for pos, user_idx in enumerate(user_indices):
         user_act = sorted_acts[user_idx]
         end_idx = user_indices[pos + 1] if pos + 1 < len(user_indices) else len(sorted_acts)
@@ -267,6 +313,9 @@ def _extract_turns(activities: list[MCSActivity]) -> list[dict]:
                 action_type = a.value.get("type", "")
                 break
 
+        # Turn index: offset by 1 if we have a greeting turn_0
+        idx = pos + 1 if turns and turns[0].get("is_greeting") else pos
+
         turns.append({
             "user_msg": user_act.text,
             "bot_msg": bot_act.text if bot_act else "",
@@ -274,7 +323,7 @@ def _extract_turns(activities: list[MCSActivity]) -> list[dict]:
             "bot_ts": bot_act.timestamp if bot_act else 0,
             "topic_name": topic_name,
             "action_type": action_type,
-            "turn_index": str(pos),
+            "turn_index": str(idx),
         })
 
     return turns
@@ -303,15 +352,21 @@ def extract_entities(transcript: MCSTranscript) -> list[MCSEntity]:
         )
     )
 
-    # 2. Turns
+    # 2. Turns (including turn_0 greeting)
     turns = _extract_turns(transcript.activities)
-    for i, turn in enumerate(turns):
-        label_text = turn["user_msg"][:50] if turn["user_msg"] else "empty"
+    for turn in turns:
+        turn_idx = turn.get("turn_index", "0")
+        if turn.get("is_greeting"):
+            label_text = turn["bot_msg"][:50] if turn["bot_msg"] else "greeting"
+            label = f"Turn 0 (greeting): {label_text}"
+        else:
+            label_text = turn["user_msg"][:50] if turn["user_msg"] else "empty"
+            label = f"Turn {turn_idx}: {label_text}"
         entities.append(
             MCSEntity(
-                entity_id=f"turn_{i}",
+                entity_id=f"turn_{turn_idx}",
                 entity_type="turn",
-                label=f"Turn {i + 1}: {label_text}",
+                label=label,
                 properties=turn,
             )
         )
@@ -442,6 +497,21 @@ def _enrich_entity_properties(vt: str, props: dict) -> None:
             if exceptions:
                 props["dialog_exceptions"] = "; ".join(exceptions)
 
+    # CSAT/PRR/ImpliedSuccess enrichment
+    elif vt == "CSATSurveyResponse":
+        if props.get("score") is not None:
+            props["csat_score"] = str(props["score"])
+        if props.get("comment"):
+            props["csat_comment"] = str(props["comment"])
+
+    elif vt == "PRRSurveyResponse":
+        if props.get("response") is not None:
+            props["prr_response"] = str(props["response"])
+
+    elif vt == "ImpliedSuccess":
+        if props.get("dialogId"):
+            props["implied_success_dialog_id"] = str(props["dialogId"])
+
 
 def _event_label(value_type: str) -> str:
     """Map a value_type to a human-readable label."""
@@ -459,6 +529,16 @@ def _event_label(value_type: str) -> str:
         "DialogRedirect": "Dialog Redirect",
         "VariableAssignment": "Variable Assignment",
         "ErrorTraceData": "Error",
-        "ErrorCode": "Error",
+        "ErrorCode": "Error Code",
+        "DynamicServerInitializeConfirmation": "MCP Server Init Confirmation",
+        "ProtocolInfo": "Protocol Info",
+        "UnknownIntent": "Unknown Intent",
+        "SkillInfo": "Skill Info",
+        # Evaluation types
+        "CSATSurveyResponse": "CSAT Response",
+        "CSATSurveyRequest": "CSAT Request",
+        "PRRSurveyResponse": "PRR Response",
+        "PRRSurveyRequest": "PRR Request",
+        "ImpliedSuccess": "Implied Success",
     }
     return labels.get(value_type, value_type)
