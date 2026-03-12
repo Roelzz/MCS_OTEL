@@ -502,6 +502,66 @@ MCS_CUSTOM_ATTRIBUTES: list[OTELAttribute] = [
         description="Name of the MCP connector from botContent",
         example_value="Zava Expense MCP Connector",
     ),
+    OTELAttribute(
+        key="mcs.plan.parent_id",
+        value_type="string",
+        description="Parent plan identifier for nested plan execution",
+        example_value="plan-abc-123",
+    ),
+    OTELAttribute(
+        key="mcs.plan.parent_step_id",
+        value_type="string",
+        description="Parent plan step identifier for nested plan execution",
+        example_value="step-xyz-456",
+    ),
+    OTELAttribute(
+        key="mcs.plan.step_id",
+        value_type="string",
+        description="Unique step identifier within a plan",
+        example_value="step-001",
+    ),
+    OTELAttribute(
+        key="mcs.step.state",
+        value_type="string",
+        description="Current state of a plan step",
+        example_value="Triggered",
+    ),
+    OTELAttribute(
+        key="mcs.step.has_recommendations",
+        value_type="string",
+        description="Whether the step produced recommendations",
+        example_value="True",
+    ),
+    OTELAttribute(
+        key="mcs.step.auto_filled_arguments",
+        value_type="string",
+        description="Arguments auto-filled by the orchestrator for a plan step",
+        example_value='{"query": "expense policy"}',
+    ),
+    OTELAttribute(
+        key="mcs.topic.type",
+        value_type="string",
+        description="Type of dialog redirect target",
+        example_value="Topic",
+    ),
+    OTELAttribute(
+        key="mcs.variable.id",
+        value_type="string",
+        description="Identifier of the variable being assigned",
+        example_value="bot.userName",
+    ),
+    OTELAttribute(
+        key="mcs.variable.new_value",
+        value_type="string",
+        description="New value assigned to the variable",
+        example_value="John Doe",
+    ),
+    OTELAttribute(
+        key="mcs.error.sub_code",
+        value_type="string",
+        description="Sub-error code for more specific error classification",
+        example_value="ActionExecutionTimeout",
+    ),
 ]
 
 ALL_ATTRIBUTES: list[OTELAttribute] = (
