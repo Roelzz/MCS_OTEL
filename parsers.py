@@ -3,6 +3,7 @@ import os
 import uuid
 from datetime import datetime, timezone
 
+import yaml
 from loguru import logger
 
 from models import MCSActivity, MCSEntity, MCSTranscript, parse_activity_value
@@ -241,6 +242,21 @@ def parse_transcript(content: str) -> MCSTranscript:
 
     session_info = _extract_session_info(activities)
 
+    # Extract user context from first user message activity
+    for raw in raw_activities:
+        from_data = raw.get("from", {})
+        role = from_data.get("role")
+        is_user = role == ROLE_USER or (isinstance(role, str) and role.lower() == "user")
+        if raw.get("type") == "message" and is_user:
+            if raw.get("localTimezone"):
+                session_info["user_timezone"] = raw["localTimezone"]
+            if raw.get("locale"):
+                session_info["user_locale"] = raw["locale"]
+            aad_id = from_data.get("aadObjectId")
+            if aad_id:
+                session_info["user_id"] = aad_id
+            break
+
     transcript = MCSTranscript(
         conversation_id=conversation_id,
         bot_name=bot_name,
@@ -298,12 +314,11 @@ def _extract_turns(activities: list[MCSActivity]) -> list[dict]:
         end_idx = user_indices[pos + 1] if pos + 1 < len(user_indices) else len(sorted_acts)
         turn_acts = sorted_acts[user_idx:end_idx]
 
-        # Find first bot message in this turn
+        # Find last bot message in this turn (orchestrator sends multiple; final is the response)
         bot_act = None
         for a in turn_acts:
             if a.type == "message" and a.from_role == ROLE_BOT and a.text:
                 bot_act = a
-                break
 
         # Extract topic name from DynamicPlanStepTriggered
         topic_name = ""
@@ -330,7 +345,9 @@ def _extract_turns(activities: list[MCSActivity]) -> list[dict]:
     return turns
 
 
-def extract_entities(transcript: MCSTranscript) -> list[MCSEntity]:
+def extract_entities(
+    transcript: MCSTranscript, bot_content: dict | None = None
+) -> list[MCSEntity]:
     """Flatten parsed transcript into entity list for the mapping UI."""
     entities: list[MCSEntity] = []
 
@@ -344,6 +361,15 @@ def extract_entities(transcript: MCSTranscript) -> list[MCSEntity]:
         root_props["session_type"] = "Unknown"
     root_props["bot_name"] = transcript.bot_name
     root_props["conversation_id"] = transcript.conversation_id
+
+    # Merge botContent metadata into root properties if available
+    if bot_content:
+        for key, value in bot_content.items():
+            if key != "bot_name":  # bot_name from botContent handled separately
+                root_props[key] = value
+        # Override bot_name from botContent if transcript doesn't have one
+        if bot_content.get("bot_name") and not transcript.bot_name:
+            root_props["bot_name"] = bot_content["bot_name"]
     entities.append(
         MCSEntity(
             entity_id="session_root",
@@ -400,8 +426,40 @@ def extract_entities(transcript: MCSTranscript) -> list[MCSEntity]:
             )
         )
 
+    _compute_think_times(entities)
+
     logger.info("Extracted {} entities from transcript", len(entities))
     return entities
+
+
+def _compute_think_times(entities: list[MCSEntity]) -> None:
+    """Compute idle/think time between DynamicPlanFinished and next DynamicPlanReceived."""
+    finished = sorted(
+        [e for e in entities if e.value_type == "DynamicPlanFinished"],
+        key=lambda e: e.properties.get("timestamp", 0),
+    )
+    received = sorted(
+        [e for e in entities if e.value_type == "DynamicPlanReceived"],
+        key=lambda e: e.properties.get("timestamp", 0),
+    )
+    if not finished or len(received) < 2:
+        return
+
+    for plan_recv in received[1:]:
+        recv_ts = plan_recv.properties.get("timestamp", 0)
+        # Find the latest DynamicPlanFinished before this DynamicPlanReceived
+        preceding_finish = None
+        for pf in finished:
+            pf_ts = pf.properties.get("timestamp", 0)
+            if pf_ts and pf_ts < recv_ts:
+                preceding_finish = pf
+        if preceding_finish:
+            finish_ts = preceding_finish.properties.get("timestamp", 0)
+            # Normalize both to milliseconds for consistent delta
+            recv_ms = recv_ts * 1000 if len(str(abs(int(recv_ts)))) <= 10 else recv_ts
+            finish_ms = finish_ts * 1000 if len(str(abs(int(finish_ts)))) <= 10 else finish_ts
+            delta_ms = abs(recv_ms - finish_ms)
+            plan_recv.properties["think_time_ms"] = str(int(delta_ms))
 
 
 def _enrich_entity_properties(vt: str, props: dict) -> None:
@@ -447,6 +505,9 @@ def _enrich_entity_properties(vt: str, props: dict) -> None:
             if "responderObjectId" in obs:
                 props["hitl_responder_id"] = obs["responderObjectId"]
             props["observation_json"] = json.dumps(obs)
+        used_outputs = props.get("planUsedOutputs", {})
+        if isinstance(used_outputs, dict) and used_outputs:
+            props["plan_used_outputs"] = json.dumps(used_outputs)
 
     elif vt == "UniversalSearchToolTraceData":
         ks = props.get("knowledgeSources", [])
@@ -456,6 +517,12 @@ def _enrich_entity_properties(vt: str, props: dict) -> None:
         output_ks = props.get("outputKnowledgeSources", [])
         if isinstance(output_ks, list):
             props["output_knowledge_sources"] = ", ".join(str(s) for s in output_ks)
+        full_results = props.get("fullResults", [])
+        if isinstance(full_results, list):
+            props["full_result_count"] = str(len(full_results))
+        filtered_results = props.get("filteredResults", [])
+        if isinstance(filtered_results, list):
+            props["filtered_result_count"] = str(len(filtered_results))
 
     elif vt == "DynamicServerToolsList":
         tools = props.get("toolsList", [])
@@ -464,6 +531,26 @@ def _enrich_entity_properties(vt: str, props: dict) -> None:
             props["tool_names"] = ", ".join(
                 t.get("displayName", t.get("identifier", "")) for t in tools if isinstance(t, dict)
             )
+
+    elif vt == "DynamicServerInitialize":
+        init_result = props.get("initializationResult", {})
+        if isinstance(init_result, dict):
+            server_info = init_result.get("serverInfo", {})
+            if isinstance(server_info, dict):
+                if server_info.get("name"):
+                    props["mcp_server_name"] = server_info["name"]
+                if server_info.get("version"):
+                    props["mcp_server_version"] = server_info["version"]
+            if init_result.get("protocolVersion"):
+                props["mcp_protocol_version"] = init_result["protocolVersion"]
+            session_info = init_result.get("sessionInfo", {})
+            if isinstance(session_info, dict) and session_info.get("id"):
+                props["mcp_session_id"] = session_info["id"]
+            caps = init_result.get("capabilities", {})
+            if isinstance(caps, dict) and caps:
+                props["mcp_capabilities"] = json.dumps(caps)
+        if props.get("dialogSchemaName"):
+            props["mcp_dialog_schema"] = props["dialogSchemaName"]
 
     elif vt == "DynamicPlanReceived":
         steps = props.get("steps", [])
@@ -571,3 +658,51 @@ def _event_label(value_type: str) -> str:
         "ImpliedSuccess": "Implied Success",
     }
     return labels.get(value_type, value_type)
+
+
+def parse_bot_content(yaml_content: str) -> dict:
+    """Extract flat metadata dict from botContent.yml."""
+    data = yaml.safe_load(yaml_content)
+    if not isinstance(data, dict):
+        raise ValueError("Invalid botContent YAML: expected a mapping")
+
+    result: dict = {}
+    entity = data.get("entity", {})
+    if isinstance(entity, dict):
+        if entity.get("cdsBotId"):
+            result["bot_id"] = entity["cdsBotId"]
+        if entity.get("authenticationMode"):
+            result["auth_mode"] = entity["authenticationMode"]
+        config = entity.get("configuration", {})
+        if isinstance(config, dict):
+            channels = config.get("channels", [])
+            if isinstance(channels, list) and channels:
+                result["channels"] = json.dumps(channels)
+            settings = config.get("settings", {})
+            if isinstance(settings, dict):
+                if settings.get("generativeActionsEnabled") is not None:
+                    result["generative_actions_enabled"] = str(settings["generativeActionsEnabled"])
+
+    components = data.get("components", [])
+    if isinstance(components, list):
+        knowledge_sources: list[str] = []
+        for comp in components:
+            if not isinstance(comp, dict):
+                continue
+            kind = comp.get("kind", "")
+            if kind == "GPT":
+                if comp.get("displayName"):
+                    result["bot_name"] = comp["displayName"]
+                if comp.get("model"):
+                    result["ai_model"] = comp["model"]
+            elif kind == "FileAttachmentComponent":
+                if comp.get("displayName"):
+                    knowledge_sources.append(comp["displayName"])
+            elif kind == "TaskAction":
+                if comp.get("displayName"):
+                    result["mcp_connector_name"] = comp["displayName"]
+        if knowledge_sources:
+            result["knowledge_sources"] = json.dumps(knowledge_sources)
+
+    logger.info("Parsed botContent: {}", {k: v[:50] if isinstance(v, str) and len(v) > 50 else v for k, v in result.items()})
+    return result

@@ -1,0 +1,25 @@
+schemaVersion: "2.0"
+entity:
+  schemaName: "copilots_header"
+  cdsBotId: "abc123-def456-ghi789"
+  authenticationMode: "Integrated"
+  configuration:
+    channels:
+      - "pva-studio"
+      - "msteams"
+    settings:
+      generativeActionsEnabled: true
+components:
+  - kind: "GPT"
+    displayName: "Zava Expense Assistant"
+    model: "gpt-4o"
+    description: "Handles expense report creation and policy lookups"
+  - kind: "FileAttachmentComponent"
+    displayName: "Zava Expense policy"
+    fileRef: "rrs_agent_orchestrator.file.ZavaExpensepolicy.txt_Z3U"
+  - kind: "FileAttachmentComponent"
+    displayName: "Team Members Functions"
+    fileRef: "rrs_agent_orchestrator.file.team_members_functions.txt_0TM"
+  - kind: "TaskAction"
+    displayName: "Zava Expense MCP Connector"
+    connectorRef: "mcp_zava_expense"

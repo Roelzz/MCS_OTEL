@@ -52,14 +52,38 @@ def upload_panel() -> rx.Component:
         ),
         rx.cond(
             State.entities.length() > 0,
-            rx.callout(
-                rx.hstack(
-                    rx.text("Parsed "),
-                    rx.text(State.entities.length(), weight="bold"),
-                    rx.text(" entities"),
+            rx.vstack(
+                rx.callout(
+                    rx.hstack(
+                        rx.text("Parsed "),
+                        rx.text(State.entities.length(), weight="bold"),
+                        rx.text(" entities"),
+                    ),
+                    icon="check",
+                    color_scheme="green",
                 ),
-                icon="check",
-                color_scheme="green",
+                rx.upload(
+                    rx.vstack(
+                        rx.text(
+                            "Optional: drop botContent.yml for enrichment",
+                            color="var(--gray-9)",
+                            size="2",
+                        ),
+                        rx.icon("file-plus", size=24, color="var(--blue-9)"),
+                        align="center",
+                        spacing="2",
+                    ),
+                    id="bot_content_upload",
+                    accept={".yml": ["application/x-yaml"], ".yaml": ["application/x-yaml"]},
+                    max_files=1,
+                    border="2px dashed var(--blue-a6)",
+                    border_radius="var(--radius-3)",
+                    padding="1em",
+                    width="100%",
+                    on_drop=State.handle_bot_content_upload,
+                ),
+                spacing="2",
+                width="100%",
             ),
             rx.fragment(),
         ),

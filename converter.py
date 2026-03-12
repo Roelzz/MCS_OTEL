@@ -351,6 +351,34 @@ def generate_default_mapping() -> MappingSpecification:
                         mcs_property="tenant",
                         otel_attribute="mcs.tenant",
                     ),
+                    AttributeMapping(
+                        mcs_property="user_timezone",
+                        otel_attribute="enduser.timezone",
+                    ),
+                    AttributeMapping(
+                        mcs_property="user_locale",
+                        otel_attribute="enduser.locale",
+                    ),
+                    AttributeMapping(
+                        mcs_property="user_id",
+                        otel_attribute="enduser.id",
+                    ),
+                    AttributeMapping(
+                        mcs_property="ai_model",
+                        otel_attribute="gen_ai.request.model",
+                    ),
+                    AttributeMapping(
+                        mcs_property="knowledge_sources",
+                        otel_attribute="mcs.knowledge.configured_sources",
+                    ),
+                    AttributeMapping(
+                        mcs_property="mcp_connector_name",
+                        otel_attribute="mcs.mcp.connector_name",
+                    ),
+                    AttributeMapping(
+                        mcs_property="auth_mode",
+                        otel_attribute="mcs.auth.mode",
+                    ),
                 ],
             ),
             # --- Conversation turns ---
@@ -426,6 +454,14 @@ def generate_default_mapping() -> MappingSpecification:
                         mcs_property="output_knowledge_sources",
                         otel_attribute="mcs.knowledge.output_sources",
                     ),
+                    AttributeMapping(
+                        mcs_property="full_result_count",
+                        otel_attribute="mcs.knowledge.full_result_count",
+                    ),
+                    AttributeMapping(
+                        mcs_property="filtered_result_count",
+                        otel_attribute="mcs.knowledge.filtered_result_count",
+                    ),
                 ],
             ),
             # --- Dynamic plan ---
@@ -449,6 +485,10 @@ def generate_default_mapping() -> MappingSpecification:
                     AttributeMapping(
                         mcs_property="is_final_plan",
                         otel_attribute="mcs.plan.is_final",
+                    ),
+                    AttributeMapping(
+                        mcs_property="think_time_ms",
+                        otel_attribute="mcs.orchestrator.think_time_ms",
                     ),
                 ],
             ),
@@ -539,6 +579,10 @@ def generate_default_mapping() -> MappingSpecification:
                         mcs_property="hitl_responder_id",
                         otel_attribute="mcs.hitl.responder_id",
                     ),
+                    AttributeMapping(
+                        mcs_property="plan_used_outputs",
+                        otel_attribute="mcs.plan.used_outputs",
+                    ),
                 ],
             ),
             # --- Plan finished ---
@@ -586,7 +630,32 @@ def generate_default_mapping() -> MappingSpecification:
                 otel_operation_name=OTELOperationName.create_agent,
                 span_name_template="create_agent mcp_init",
                 parent_rule_id="user_turn",
-                attribute_mappings=[],
+                attribute_mappings=[
+                    AttributeMapping(
+                        mcs_property="mcp_server_name",
+                        otel_attribute="mcs.mcp.server_name",
+                    ),
+                    AttributeMapping(
+                        mcs_property="mcp_server_version",
+                        otel_attribute="mcs.mcp.server_version",
+                    ),
+                    AttributeMapping(
+                        mcs_property="mcp_protocol_version",
+                        otel_attribute="mcs.mcp.protocol_version",
+                    ),
+                    AttributeMapping(
+                        mcs_property="mcp_session_id",
+                        otel_attribute="mcs.mcp.session_id",
+                    ),
+                    AttributeMapping(
+                        mcs_property="mcp_capabilities",
+                        otel_attribute="mcs.mcp.capabilities",
+                    ),
+                    AttributeMapping(
+                        mcs_property="mcp_dialog_schema",
+                        otel_attribute="mcs.mcp.dialog_schema",
+                    ),
+                ],
             ),
             # --- MCP tools list ---
             SpanMappingRule(
@@ -911,8 +980,11 @@ def _span_to_otlp(span: OTELSpan) -> dict:
     return otlp
 
 
-def to_otlp_json(trace: OTELTrace, service_name: str) -> dict:
+def to_otlp_json(
+    trace: OTELTrace, service_name: str, bot_name: str | None = None
+) -> dict:
     """Serialize trace to OTLP-compatible JSON structure."""
+    effective_service_name = bot_name if bot_name else service_name
     flat_spans = _flatten_spans(trace.root_span)
 
     return {
@@ -922,7 +994,7 @@ def to_otlp_json(trace: OTELTrace, service_name: str) -> dict:
                     "attributes": [
                         {
                             "key": "service.name",
-                            "value": {"stringValue": service_name},
+                            "value": {"stringValue": effective_service_name},
                         }
                     ]
                 },

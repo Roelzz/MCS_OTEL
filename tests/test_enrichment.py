@@ -5,11 +5,12 @@ import pytest
 
 from converter import apply_mapping, generate_default_mapping
 from models import OTELSpanKind
-from parsers import extract_entities, parse_transcript
+from parsers import extract_entities, parse_bot_content, parse_transcript
 
 FIXTURE_PATH = os.path.join(os.path.dirname(__file__), "fixtures", "zava_expense_transcript.json")
 REX_FIXTURE_PATH = os.path.join(os.path.dirname(__file__), "fixtures", "rex_teams_transcript.json")
 PVA_FIXTURE_PATH = os.path.join(os.path.dirname(__file__), "fixtures", "pva_studio_transcript.json")
+BOT_CONTENT_PATH = os.path.join(os.path.dirname(__file__), "fixtures", "zava_bot_content.yml")
 
 
 @pytest.fixture
@@ -507,3 +508,153 @@ class TestMultiFormatTraces:
         thought_spans = find_spans(rex_trace.root_span)
         assert len(thought_spans) >= 1
         assert "refund" in thought_spans[0].attributes["mcs.orchestrator.thought"].lower()
+
+
+# --- Gap 1: MCP Server Metadata ---
+
+
+class TestMCPServerInitEnrichment:
+    def test_mcp_server_name_extracted(self, zava_entities):
+        inits = [e for e in zava_entities if e.value_type == "DynamicServerInitialize"]
+        assert len(inits) >= 1
+        assert inits[0].properties.get("mcp_server_name") == "Zava Expense Assistant"
+
+    def test_mcp_server_version_extracted(self, zava_entities):
+        inits = [e for e in zava_entities if e.value_type == "DynamicServerInitialize"]
+        assert inits[0].properties.get("mcp_server_version") == "2.13.1"
+
+    def test_mcp_protocol_version(self, zava_entities):
+        inits = [e for e in zava_entities if e.value_type == "DynamicServerInitialize"]
+        assert inits[0].properties.get("mcp_protocol_version") == "2024-11-05"
+
+    def test_mcp_session_id(self, zava_entities):
+        inits = [e for e in zava_entities if e.value_type == "DynamicServerInitialize"]
+        assert inits[0].properties.get("mcp_session_id") == "56823f4f1af746e284a5221da035e332"
+
+    def test_mcp_server_name_in_span(self, zava_trace):
+        def find_spans(span):
+            found = []
+            if span.attributes.get("mcs.mcp.server_name"):
+                found.append(span)
+            for child in span.children:
+                found.extend(find_spans(child))
+            return found
+
+        mcp_spans = find_spans(zava_trace.root_span)
+        assert len(mcp_spans) >= 1
+        assert mcp_spans[0].attributes["mcs.mcp.server_name"] == "Zava Expense Assistant"
+        assert mcp_spans[0].attributes["mcs.mcp.server_version"] == "2.13.1"
+
+
+# --- Gap 4: User Context Metadata ---
+
+
+class TestUserContextMetadata:
+    def test_user_timezone_in_session_info(self, zava_transcript):
+        assert zava_transcript.session_info.get("user_timezone") == "Europe/Amsterdam"
+
+    def test_user_locale_in_session_info(self, zava_transcript):
+        assert zava_transcript.session_info.get("user_locale") == "en-US"
+
+    def test_user_id_in_session_info(self, zava_transcript):
+        assert zava_transcript.session_info.get("user_id") == "6173da01-d84e-4dbd-beef-12fadce152f1"
+
+    def test_user_context_in_root_span(self, zava_trace):
+        attrs = zava_trace.root_span.attributes
+        assert attrs.get("enduser.timezone") == "Europe/Amsterdam"
+        assert attrs.get("enduser.locale") == "en-US"
+        assert attrs.get("enduser.id") == "6173da01-d84e-4dbd-beef-12fadce152f1"
+
+
+# --- Gap 6: Knowledge Grounding Quality ---
+
+
+class TestKnowledgeGroundingQuality:
+    def test_full_result_count(self, zava_entities):
+        ks = [e for e in zava_entities if e.value_type == "UniversalSearchToolTraceData"]
+        assert len(ks) >= 1
+        assert "full_result_count" in ks[0].properties
+
+    def test_filtered_result_count(self, zava_entities):
+        ks = [e for e in zava_entities if e.value_type == "UniversalSearchToolTraceData"]
+        assert "filtered_result_count" in ks[0].properties
+
+
+# --- Batch 3: botContent.yml support ---
+
+
+@pytest.fixture
+def bot_content_yaml():
+    with open(BOT_CONTENT_PATH) as f:
+        return f.read()
+
+
+@pytest.fixture
+def bot_content(bot_content_yaml):
+    return parse_bot_content(bot_content_yaml)
+
+
+@pytest.fixture
+def zava_entities_with_bot_content(zava_transcript, bot_content):
+    return extract_entities(zava_transcript, bot_content=bot_content)
+
+
+@pytest.fixture
+def zava_trace_with_bot_content(zava_entities_with_bot_content):
+    spec = generate_default_mapping()
+    return apply_mapping(zava_entities_with_bot_content, spec)
+
+
+class TestBotContentParser:
+    def test_bot_name(self, bot_content):
+        assert bot_content["bot_name"] == "Zava Expense Assistant"
+
+    def test_ai_model(self, bot_content):
+        assert bot_content["ai_model"] == "gpt-4o"
+
+    def test_bot_id(self, bot_content):
+        assert bot_content["bot_id"] == "abc123-def456-ghi789"
+
+    def test_knowledge_sources(self, bot_content):
+        sources = json.loads(bot_content["knowledge_sources"])
+        assert "Zava Expense policy" in sources
+        assert "Team Members Functions" in sources
+
+    def test_mcp_connector_name(self, bot_content):
+        assert bot_content["mcp_connector_name"] == "Zava Expense MCP Connector"
+
+    def test_auth_mode(self, bot_content):
+        assert bot_content["auth_mode"] == "Integrated"
+
+    def test_channels(self, bot_content):
+        channels = json.loads(bot_content["channels"])
+        assert "msteams" in channels
+
+    def test_generative_actions(self, bot_content):
+        assert bot_content["generative_actions_enabled"] == "True"
+
+
+class TestBotContentEnrichment:
+    def test_ai_model_in_root_span(self, zava_trace_with_bot_content):
+        attrs = zava_trace_with_bot_content.root_span.attributes
+        assert attrs.get("gen_ai.request.model") == "gpt-4o"
+
+    def test_mcp_connector_in_root_span(self, zava_trace_with_bot_content):
+        attrs = zava_trace_with_bot_content.root_span.attributes
+        assert attrs.get("mcs.mcp.connector_name") == "Zava Expense MCP Connector"
+
+    def test_auth_mode_in_root_span(self, zava_trace_with_bot_content):
+        attrs = zava_trace_with_bot_content.root_span.attributes
+        assert attrs.get("mcs.auth.mode") == "Integrated"
+
+    def test_knowledge_sources_in_root_span(self, zava_trace_with_bot_content):
+        attrs = zava_trace_with_bot_content.root_span.attributes
+        assert "Zava Expense policy" in attrs.get("mcs.knowledge.configured_sources", "")
+
+
+class TestBotContentBackwardCompatibility:
+    def test_without_bot_content_works(self, zava_entities, zava_trace):
+        """Existing workflow without botContent still produces valid trace."""
+        assert zava_trace.total_spans >= 10
+        root = [e for e in zava_entities if e.entity_id == "session_root"][0]
+        assert "ai_model" not in root.properties

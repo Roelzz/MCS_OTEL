@@ -10,6 +10,7 @@ dependencies = [
     "loguru>=0.7",
     "python-dotenv>=1.0",
     "typer>=0.15",
+    "pyyaml>=6.0.3",
 ]
 
 [project.optional-dependencies]

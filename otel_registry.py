@@ -202,6 +202,24 @@ CONTEXT_ATTRIBUTES: list[OTELAttribute] = [
         description="Plain text preview of the assistant response",
         example_value="I can help with that!",
     ),
+    OTELAttribute(
+        key="enduser.timezone",
+        value_type="string",
+        description="User's local timezone from message activity",
+        example_value="Europe/Amsterdam",
+    ),
+    OTELAttribute(
+        key="enduser.locale",
+        value_type="string",
+        description="User's locale from message activity",
+        example_value="en-US",
+    ),
+    OTELAttribute(
+        key="enduser.id",
+        value_type="string",
+        description="User's AAD object ID",
+        example_value="6173da01-d84e-4dbd-beef-12fadce152f1",
+    ),
 ]
 
 RETRIEVAL_ATTRIBUTES: list[OTELAttribute] = [
@@ -262,12 +280,6 @@ RETRIEVAL_ATTRIBUTES: list[OTELAttribute] = [
 ]
 
 MCS_CUSTOM_ATTRIBUTES: list[OTELAttribute] = [
-    OTELAttribute(
-        key="mcs.topic.name",
-        value_type="string",
-        description="Name of the Copilot Studio topic triggered",
-        example_value="Greeting",
-    ),
     OTELAttribute(
         key="mcs.session.outcome",
         value_type="string",
@@ -405,6 +417,90 @@ MCS_CUSTOM_ATTRIBUTES: list[OTELAttribute] = [
         value_type="string",
         description="Number of dialog actions executed",
         example_value="3",
+    ),
+    OTELAttribute(
+        key="mcs.mcp.server_name",
+        value_type="string",
+        description="Name of the MCP server",
+        example_value="Zava Expense Assistant",
+    ),
+    OTELAttribute(
+        key="mcs.mcp.server_version",
+        value_type="string",
+        description="Version of the MCP server",
+        example_value="2.13.1",
+    ),
+    OTELAttribute(
+        key="mcs.mcp.protocol_version",
+        value_type="string",
+        description="MCP protocol version used",
+        example_value="2024-11-05",
+    ),
+    OTELAttribute(
+        key="mcs.mcp.session_id",
+        value_type="string",
+        description="MCP session identifier",
+        example_value="56823f4f1af746e284a5221da035e332",
+    ),
+    OTELAttribute(
+        key="mcs.mcp.capabilities",
+        value_type="string",
+        description="JSON-encoded MCP server capabilities",
+        example_value='{"tools": {"listChanged": true}}',
+    ),
+    OTELAttribute(
+        key="mcs.mcp.dialog_schema",
+        value_type="string",
+        description="Dialog schema name for MCP server",
+        example_value="rrs_agent_orchestrator.topic.ZavaExpenseMCP",
+    ),
+    OTELAttribute(
+        key="mcs.orchestrator.think_time_ms",
+        value_type="string",
+        description="Idle time in ms between plan finished and next plan received",
+        example_value="1500",
+    ),
+    OTELAttribute(
+        key="mcs.plan.used_outputs",
+        value_type="string",
+        description="JSON-encoded outputs passed between plan steps",
+        example_value='{"key": "value"}',
+    ),
+    OTELAttribute(
+        key="mcs.auth.mode",
+        value_type="string",
+        description="Bot authentication mode",
+        example_value="Integrated",
+    ),
+    OTELAttribute(
+        key="mcs.knowledge.configured_sources",
+        value_type="string",
+        description="JSON-encoded list of configured knowledge sources from botContent",
+        example_value='["Expense policy", "Team Members"]',
+    ),
+    OTELAttribute(
+        key="mcs.knowledge.full_result_count",
+        value_type="string",
+        description="Number of full results from knowledge search",
+        example_value="5",
+    ),
+    OTELAttribute(
+        key="mcs.knowledge.filtered_result_count",
+        value_type="string",
+        description="Number of filtered results from knowledge search",
+        example_value="3",
+    ),
+    OTELAttribute(
+        key="mcs.knowledge.source_count",
+        value_type="string",
+        description="Number of knowledge sources queried",
+        example_value="2",
+    ),
+    OTELAttribute(
+        key="mcs.mcp.connector_name",
+        value_type="string",
+        description="Name of the MCP connector from botContent",
+        example_value="Zava Expense MCP Connector",
     ),
 ]
 
