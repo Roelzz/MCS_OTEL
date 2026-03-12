@@ -281,13 +281,15 @@ def apply_mapping(
             root_span.end_time_ns = max(all_ends)
 
     total = len(all_spans)
+    total_events = len(pending_events)
     duration_ns = root_span.end_time_ns - root_span.start_time_ns
     duration_ms = duration_ns / 1_000_000
 
     logger.info(
-        "Built trace {}: {} spans, {:.1f}ms duration",
+        "Built trace {}: {} spans, {} events, {:.1f}ms duration",
         trace_id[:8],
         total,
+        total_events,
         duration_ms,
     )
 
@@ -295,6 +297,7 @@ def apply_mapping(
         trace_id=trace_id,
         root_span=root_span,
         total_spans=total,
+        total_events=total_events,
         duration_ms=duration_ms,
     )
 

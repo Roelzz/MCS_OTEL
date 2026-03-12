@@ -200,7 +200,7 @@ def _analyze_single_content(
 
     try:
         trace = apply_mapping(entities, spec)
-        fa.span_count = trace.total_spans
+        fa.span_count = trace.total_spans + trace.total_events
 
         total_attrs = 0
         filled_attrs = 0
@@ -266,7 +266,7 @@ def _analyze_single_file(
     # Try applying the mapping to measure coverage
     try:
         trace = apply_mapping(entities, spec)
-        fa.span_count = trace.total_spans
+        fa.span_count = trace.total_spans + trace.total_events
 
         # Compute attribute fill rate
         total_attrs = 0

@@ -260,6 +260,7 @@ class OTELTrace(BaseModel):
     trace_id: str
     root_span: OTELSpan
     total_spans: int
+    total_events: int = 0
     duration_ms: float
 
 
