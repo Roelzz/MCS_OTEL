@@ -121,13 +121,7 @@ def _matches_rule(entity: MCSEntity, rule: SpanMappingRule) -> bool:
     if entity.entity_type != rule.mcs_entity_type:
         return False
     if rule.mcs_value_type:
-        # Match against label or entity properties
-        if entity.label == rule.mcs_value_type:
-            return True
-        # Also check if the entity_id or label contains the value_type hint
-        if rule.mcs_value_type in entity.entity_id:
-            return True
-        return False
+        return entity.value_type == rule.mcs_value_type or entity.label == rule.mcs_value_type
     return True
 
 
@@ -268,6 +262,14 @@ def apply_mapping(
             "timeUnixNano": evt["timestamp_ns"],
             "attributes": evt["attributes"],
         })
+
+    # Mark parent spans as ERROR when they contain error events
+    for evt in pending_events:
+        if evt["name"] in ("error", "error_code"):
+            parent_rule_id = evt["parent_rule_id"]
+            parent_candidates = rule_spans.get(parent_rule_id, []) if parent_rule_id else []
+            target_span = parent_candidates[0] if parent_candidates else root_span
+            target_span.status = "ERROR"
 
     # Adjust root span timing to cover all children
     if root_span.children:
@@ -688,7 +690,11 @@ def generate_default_mapping() -> MappingSpecification:
                 span_name_template="error",
                 output_type="event",
                 parent_rule_id="user_turn",
-                attribute_mappings=[],
+                attribute_mappings=[
+                    AttributeMapping(mcs_property="errorCode", otel_attribute="error.type"),
+                    AttributeMapping(mcs_property="errorMessage", otel_attribute="error.message"),
+                    AttributeMapping(mcs_property="isUserError", otel_attribute="mcs.error.is_user_error"),
+                ],
             ),
             # --- Error code (as event on turn) ---
             SpanMappingRule(
@@ -700,7 +706,10 @@ def generate_default_mapping() -> MappingSpecification:
                 span_name_template="error_code",
                 output_type="event",
                 parent_rule_id="user_turn",
-                attribute_mappings=[],
+                attribute_mappings=[
+                    AttributeMapping(mcs_property="errorCode", otel_attribute="error.type"),
+                    AttributeMapping(mcs_property="errorMessage", otel_attribute="error.message"),
+                ],
             ),
             # --- Variable assignment (as event on turn) ---
             SpanMappingRule(
@@ -712,7 +721,11 @@ def generate_default_mapping() -> MappingSpecification:
                 span_name_template="variable_assignment",
                 output_type="event",
                 parent_rule_id="user_turn",
-                attribute_mappings=[],
+                attribute_mappings=[
+                    AttributeMapping(mcs_property="name", otel_attribute="mcs.variable.name"),
+                    AttributeMapping(mcs_property="value", otel_attribute="mcs.variable.value"),
+                    AttributeMapping(mcs_property="type", otel_attribute="mcs.variable.type"),
+                ],
             ),
             # --- Unknown intent (as event on turn) ---
             SpanMappingRule(
@@ -724,7 +737,9 @@ def generate_default_mapping() -> MappingSpecification:
                 span_name_template="unknown_intent",
                 output_type="event",
                 parent_rule_id="user_turn",
-                attribute_mappings=[],
+                attribute_mappings=[
+                    AttributeMapping(mcs_property="userQuery", otel_attribute="gen_ai.input.messages"),
+                ],
             ),
             # --- MCP server init confirmation ---
             SpanMappingRule(

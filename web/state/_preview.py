@@ -30,7 +30,9 @@ class PreviewMixin(rx.State, mixin=True):
 
             # Flatten tree with depth metadata
             self.preview_spans = self._flatten_tree(trace.root_span, 0)
-        except Exception:
+        except Exception as e:
+            from loguru import logger
+            logger.error("Failed to refresh preview: {}", e)
             self.preview_spans = []
 
     def _flatten_tree(self, span: OTELSpan, depth: int) -> list[dict]:

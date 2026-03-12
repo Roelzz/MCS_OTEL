@@ -19,19 +19,20 @@ ROLE_USER = 1
 
 
 def _normalize_timestamp(ts: int | float | str | None) -> int:
-    """Normalize a timestamp to unix epoch seconds (int).
+    """Normalize a timestamp to epoch millis or seconds (int), preserving precision.
 
     Handles:
-    - int/float already in epoch seconds (10 digits) or millis (13 digits)
-    - ISO 8601 strings like '2026-03-07T10:03:11.8086342+00:00'
+    - int/float already in epoch seconds (10 digits) — returned as-is
+    - int/float in epoch millis (13 digits) — returned as-is (millis preserved)
+    - ISO 8601 strings like '2026-03-07T10:03:11.8086342+00:00' — converted to millis
     """
     if ts is None:
         return 0
     if isinstance(ts, (int, float)):
         ts_int = int(ts)
-        # 13-digit = milliseconds, convert to seconds
+        # 13-digit = milliseconds, preserve as-is
         if len(str(abs(ts_int))) >= 13:
-            return ts_int // 1000
+            return ts_int
         return ts_int
     if isinstance(ts, str):
         ts = ts.strip()
@@ -348,6 +349,7 @@ def extract_entities(transcript: MCSTranscript) -> list[MCSEntity]:
             entity_id="session_root",
             entity_type="trace_event",
             label="SessionInfo",
+            value_type="SessionInfo",
             properties=root_props,
         )
     )
@@ -393,6 +395,7 @@ def extract_entities(transcript: MCSTranscript) -> list[MCSEntity]:
                 entity_id=f"trace_{vt}_{count}",
                 entity_type="trace_event",
                 label=label,
+                value_type=vt,
                 properties=props,
             )
         )
@@ -496,6 +499,32 @@ def _enrich_entity_properties(vt: str, props: dict) -> None:
             ]
             if exceptions:
                 props["dialog_exceptions"] = "; ".join(exceptions)
+
+    elif vt == "ErrorTraceData":
+        if props.get("errorCode"):
+            props["errorCode"] = str(props["errorCode"])
+        if props.get("errorMessage"):
+            props["errorMessage"] = str(props["errorMessage"])
+        if props.get("isUserError") is not None:
+            props["isUserError"] = str(props["isUserError"])
+
+    elif vt == "ErrorCode":
+        if props.get("errorCode"):
+            props["errorCode"] = str(props["errorCode"])
+        if props.get("errorMessage"):
+            props["errorMessage"] = str(props["errorMessage"])
+
+    elif vt == "VariableAssignment":
+        if props.get("name"):
+            props["name"] = str(props["name"])
+        if props.get("value") is not None:
+            props["value"] = str(props["value"])
+        if props.get("type"):
+            props["type"] = str(props["type"])
+
+    elif vt == "UnknownIntent":
+        if props.get("userQuery"):
+            props["userQuery"] = str(props["userQuery"])
 
     # CSAT/PRR/ImpliedSuccess enrichment
     elif vt == "CSATSurveyResponse":

@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import pytest
 
@@ -6,7 +7,8 @@ from converter import apply_mapping, generate_default_mapping, to_otlp_json
 from models import MappingSpecification, OTELTrace
 from parsers import extract_entities, parse_transcript
 
-TRANSCRIPT_PATH = "/Users/roelschenk/Downloads/Projects/Agent_analyser/Transcripts/Rex_Bluebot_Dev_Teams.json"
+FIXTURE_DIR = Path(__file__).parent / "fixtures"
+TRANSCRIPT_PATH = FIXTURE_DIR / "rex_teams_transcript.json"
 
 
 @pytest.fixture

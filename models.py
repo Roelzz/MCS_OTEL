@@ -31,6 +31,7 @@ class MCSEntity(BaseModel):
     entity_type: str
     source_type: str = "transcript"
     label: str
+    value_type: str = ""
     properties: dict = Field(default_factory=dict)
 
 

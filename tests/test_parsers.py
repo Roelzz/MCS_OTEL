@@ -1,10 +1,12 @@
 import json
+from pathlib import Path
 
 import pytest
 
 from parsers import extract_entities, parse_transcript
 
-TRANSCRIPT_PATH = "/Users/roelschenk/Downloads/Projects/Agent_analyser/Transcripts/Rex_Bluebot_Dev_Teams.json"
+FIXTURE_DIR = Path(__file__).parent / "fixtures"
+TRANSCRIPT_PATH = FIXTURE_DIR / "rex_teams_transcript.json"
 
 
 @pytest.fixture
@@ -71,7 +73,7 @@ class TestParseTranscript:
         """Some transcripts use 13-digit millisecond timestamps."""
         data = [{"type": "message", "timestamp": 1771240828617, "from": {"role": 1}, "text": "hello"}]
         t = parse_transcript(json.dumps(data))
-        assert t.activities[0].timestamp == 1771240828
+        assert t.activities[0].timestamp == 1771240828617
 
     def test_invalid_json_raises(self):
         with pytest.raises(Exception):

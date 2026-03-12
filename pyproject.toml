@@ -9,6 +9,7 @@ dependencies = [
     "pydantic>=2.0",
     "loguru>=0.7",
     "python-dotenv>=1.0",
+    "typer>=0.15",
 ]
 
 [project.optional-dependencies]
@@ -27,3 +28,8 @@ select = ["E", "F", "I"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]

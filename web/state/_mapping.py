@@ -13,12 +13,178 @@ from models import (
     TransformType,
 )
 
+# --- React Flow node/edge generation ---
+
+MCS_GROUPS: list[tuple[str, str, list[str]]] = [
+    ("Session", "#3b82f6", ["SessionInfo"]),
+    ("Turns", "#22c55e", ["turn"]),
+    ("Orchestrator", "#a855f7", [
+        "DynamicPlanReceived", "DynamicPlanStepTriggered",
+        "DynamicPlanStepBindUpdate", "DynamicPlanStepFinished",
+        "DynamicPlanFinished", "DynamicPlanReceivedDebug",
+    ]),
+    ("MCP", "#06b6d4", [
+        "DynamicServerInitialize", "DynamicServerInitializeConfirmation",
+        "DynamicServerToolsList",
+    ]),
+    ("Dialog & Classification", "#f59e0b", [
+        "DialogTracingInfo", "DialogRedirect", "UnknownIntent",
+        "VariableAssignment",
+    ]),
+    ("Knowledge & Skills", "#14b8a6", [
+        "UniversalSearchToolTraceData", "SkillInfo", "ProtocolInfo",
+    ]),
+    ("Errors", "#ef4444", ["ErrorTraceData", "ErrorCode"]),
+]
+
+OTEL_TARGET_COLORS: dict[str, str] = {
+    "invoke_agent": "#3b82f6",
+    "chat": "#22c55e",
+    "execute_tool": "#f97316",
+    "knowledge.retrieval": "#14b8a6",
+    "chain": "#a855f7",
+    "text_completion": "#6b7280",
+    "create_agent": "#06b6d4",
+    "dialog_redirect": "#f59e0b",
+    "intent_recognition": "#84cc16",
+    "execute_node": "#ec4899",
+}
+
+_ENTITY_SHORT_LABELS: dict[str, str] = {
+    "SessionInfo": "SessionInfo",
+    "turn": "Turn",
+    "DynamicPlanReceived": "PlanReceived",
+    "DynamicPlanStepTriggered": "PlanStepTriggered",
+    "DynamicPlanStepBindUpdate": "PlanStepBind",
+    "DynamicPlanStepFinished": "PlanStepFinished",
+    "DynamicPlanFinished": "PlanFinished",
+    "DynamicPlanReceivedDebug": "PlanRecvDebug",
+    "DynamicServerInitialize": "ServerInit",
+    "DynamicServerInitializeConfirmation": "ServerInitConf",
+    "DynamicServerToolsList": "ServerToolsList",
+    "DialogTracingInfo": "DialogTracing",
+    "DialogRedirect": "DialogRedirect",
+    "UnknownIntent": "UnknownIntent",
+    "VariableAssignment": "VarAssignment",
+    "UniversalSearchToolTraceData": "KnowledgeSearch",
+    "SkillInfo": "SkillInfo",
+    "ProtocolInfo": "ProtocolInfo",
+    "ErrorTraceData": "ErrorTrace",
+    "ErrorCode": "ErrorCode",
+}
+
+
+def _build_flow_nodes() -> list[dict]:
+    """Build React Flow nodes for MCS entities (left) and OTEL targets (right)."""
+    nodes: list[dict] = []
+    y = 0
+
+    for group_name, color, entities in MCS_GROUPS:
+        # Group header — non-interactive label node
+        nodes.append({
+            "id": f"header_{group_name}",
+            "data": {"label": group_name.upper()},
+            "position": {"x": 50, "y": y},
+            "connectable": False,
+            "selectable": False,
+            "draggable": False,
+            "style": {
+                "background": "transparent",
+                "border": "none",
+                "boxShadow": "none",
+                "fontSize": "10px",
+                "fontWeight": "700",
+                "color": color,
+                "letterSpacing": "0.05em",
+                "width": "230px",
+                "padding": "2px 4px",
+                "minHeight": "0",
+            },
+        })
+        y += 28
+
+        for entity in entities:
+            label = _ENTITY_SHORT_LABELS.get(entity, entity)
+            nodes.append({
+                "id": f"mcs_{entity}",
+                "type": "input",
+                "data": {"label": label},
+                "position": {"x": 50, "y": y},
+                "sourcePosition": "right",
+                "draggable": False,
+                "style": {
+                    "background": f"{color}18",
+                    "border": f"1px solid {color}88",
+                    "borderRadius": "6px",
+                    "fontSize": "12px",
+                    "padding": "4px 10px",
+                    "width": "230px",
+                    "minHeight": "0",
+                },
+            })
+            y += 42
+
+        y += 14
+
+    # OTEL targets — centered vertically relative to total MCS height
+    total_mcs_h = y
+    otel_targets = list(OTEL_TARGET_COLORS.items())
+    otel_spacing = 65
+    otel_total = len(otel_targets) * otel_spacing
+    otel_start_y = max(0, (total_mcs_h - otel_total) // 2)
+
+    for i, (target, color) in enumerate(otel_targets):
+        nodes.append({
+            "id": f"otel_{target}",
+            "type": "output",
+            "data": {"label": target},
+            "position": {"x": 700, "y": otel_start_y + i * otel_spacing},
+            "targetPosition": "left",
+            "draggable": False,
+            "style": {
+                "background": f"{color}20",
+                "border": f"2px solid {color}",
+                "borderRadius": "6px",
+                "fontSize": "13px",
+                "fontWeight": "500",
+                "padding": "6px 12px",
+                "width": "200px",
+                "minHeight": "0",
+            },
+        })
+
+    return nodes
+
+
+def _build_flow_edges(connections: list[dict]) -> list[dict]:
+    """Build React Flow edges from connection list."""
+    edges: list[dict] = []
+    for conn in connections:
+        source = f"mcs_{conn['mcs_entity_type']}"
+        target = f"otel_{conn['otel_target']}"
+        edges.append({
+            "id": f"{source}->{target}",
+            "source": source,
+            "target": target,
+            "animated": True,
+            "style": {"stroke": "#22c55e", "strokeWidth": 2},
+            "markerEnd": {"type": "arrowclosed", "color": "#22c55e"},
+        })
+    return edges
+
+
+DEFAULT_FLOW_NODES: list[dict] = _build_flow_nodes()
+
 
 class MappingMixin(rx.State, mixin=True):
     mapping_spec: dict = {}  # Serialized MappingSpecification
     selected_rule_id: str = ""
     selected_mcs_entity: str = ""  # Currently clicked MCS entity in connection view
     connections: list[dict] = []  # [{mcs_entity_type, otel_target, rule_id}]
+
+    # React Flow state
+    flow_nodes: list[dict] = DEFAULT_FLOW_NODES
+    flow_edges: list[dict] = []
 
     @rx.var(cache=True)
     def mapping_rules(self) -> list[dict]:
@@ -91,8 +257,7 @@ class MappingMixin(rx.State, mixin=True):
 
     def _infer_entity_type(self, label: str) -> str:
         """Infer entity_type from the MCS entity label."""
-        turn_labels = {"UserMessage", "BotMessage", "Turn"}
-        if label in turn_labels:
+        if label.lower() in {"usermessage", "botmessage", "turn"}:
             return "turn"
         return "trace_event"
 
@@ -110,6 +275,43 @@ class MappingMixin(rx.State, mixin=True):
         self.mapping_spec = spec.model_dump()
         if self.selected_rule_id == rule_id:
             self.selected_rule_id = ""
+
+    def on_flow_connect(self, connection: dict):
+        """Handle new connection from React Flow drag-and-drop."""
+        source_id = connection.get("source", "")
+        target_id = connection.get("target", "")
+
+        mcs_entity = source_id.removeprefix("mcs_")
+        otel_target = target_id.removeprefix("otel_")
+
+        # Check for existing connection
+        for conn in self.connections:
+            if conn["mcs_entity_type"] == mcs_entity and conn["otel_target"] == otel_target:
+                return
+
+        # Reuse connect_to_otel logic
+        self.selected_mcs_entity = mcs_entity
+        self.connect_to_otel(otel_target)
+
+        # Rebuild flow edges
+        self.flow_edges = _build_flow_edges(self.connections)
+
+    def on_flow_edge_delete(self, edge_id: str):
+        """Handle edge deletion from React Flow."""
+        parts = edge_id.split("->")
+        if len(parts) != 2:
+            return
+
+        source_id, target_id = parts
+        mcs_entity = source_id.removeprefix("mcs_")
+        otel_target = target_id.removeprefix("otel_")
+
+        for conn in self.connections:
+            if conn["mcs_entity_type"] == mcs_entity and conn["otel_target"] == otel_target:
+                self.remove_connection(conn["rule_id"])
+                break
+
+        self.flow_edges = _build_flow_edges(self.connections)
 
     def select_rule(self, rule_id: str):
         """Select a rule for editing."""
@@ -177,7 +379,7 @@ class MappingMixin(rx.State, mixin=True):
         self.mapping_spec = spec.model_dump()
 
     def load_defaults(self):
-        """Populate from generate_default_mapping(), also populate connections list."""
+        """Populate from generate_default_mapping(), also populate connections and flow edges."""
         spec = generate_default_mapping()
         self.mapping_spec = spec.model_dump()
 
@@ -194,6 +396,9 @@ class MappingMixin(rx.State, mixin=True):
                     "rule_id": rule.rule_id,
                 }
             )
+
+        # Build flow edges from connections
+        self.flow_edges = _build_flow_edges(self.connections)
 
     def import_mapping(self, json_str: str):
         """Import mapping from JSON string."""
@@ -216,8 +421,11 @@ class MappingMixin(rx.State, mixin=True):
                         "rule_id": rule.rule_id,
                     }
                 )
-        except Exception:
-            pass
+            # Rebuild flow edges
+            self.flow_edges = _build_flow_edges(self.connections)
+        except Exception as e:
+            from loguru import logger
+            logger.error("Failed to import mapping: {}", e)
 
     def export_mapping(self) -> str:
         """Export mapping spec as JSON string."""
