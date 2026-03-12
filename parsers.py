@@ -100,6 +100,9 @@ TRACKED_EVENT_TYPES = {
     "PRRSurveyResponse",
     "PRRSurveyRequest",
     "ImpliedSuccess",
+    "AIBuilderTraceData",
+    "DynamicPlanStepBlocked",
+    "KnowledgeTraceData",
 }
 
 
@@ -489,6 +492,7 @@ def _enrich_entity_properties(vt: str, props: dict) -> None:
                 sr = obs["search_result"]
                 results = sr.get("search_results", []) if isinstance(sr, dict) else []
                 props["retrieval_document_count"] = str(len(results))
+                props["filtered_result_count"] = str(len(results)) # Alias for mcs.knowledge.filtered_result_count
                 props["retrieval_document_names"] = ", ".join(
                     r.get("Name", "") or "" for r in results if isinstance(r, dict)
                 )
@@ -520,9 +524,11 @@ def _enrich_entity_properties(vt: str, props: dict) -> None:
         full_results = props.get("fullResults", [])
         if isinstance(full_results, list):
             props["full_result_count"] = str(len(full_results))
+            props["full_results_json"] = json.dumps(full_results)
         filtered_results = props.get("filteredResults", [])
         if isinstance(filtered_results, list):
             props["filtered_result_count"] = str(len(filtered_results))
+            props["filtered_results_json"] = json.dumps(filtered_results)
 
     elif vt == "DynamicServerToolsList":
         tools = props.get("toolsList", [])
@@ -531,10 +537,12 @@ def _enrich_entity_properties(vt: str, props: dict) -> None:
             props["tool_names"] = ", ".join(
                 t.get("displayName", t.get("identifier", "")) for t in tools if isinstance(t, dict)
             )
+            props["mcp_tools_list_json"] = json.dumps(tools)
 
     elif vt == "DynamicServerInitialize":
         init_result = props.get("initializationResult", {})
         if isinstance(init_result, dict):
+            props["mcp_initialization_result"] = json.dumps(init_result)
             server_info = init_result.get("serverInfo", {})
             if isinstance(server_info, dict):
                 if server_info.get("name"):

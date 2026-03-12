@@ -191,13 +191,13 @@ CONTEXT_ATTRIBUTES: list[OTELAttribute] = [
         example_value="Greeting",
     ),
     OTELAttribute(
-        key="user.message_preview",
+        key="mcs.user.message_preview",
         value_type="string",
         description="Plain text preview of the user message",
         example_value="I need help with expenses",
     ),
     OTELAttribute(
-        key="assistant.message_preview",
+        key="mcs.assistant.message_preview",
         value_type="string",
         description="Plain text preview of the assistant response",
         example_value="I can help with that!",
@@ -449,6 +449,12 @@ MCS_CUSTOM_ATTRIBUTES: list[OTELAttribute] = [
         example_value='{"tools": {"listChanged": true}}',
     ),
     OTELAttribute(
+        key="mcs.mcp.initialization_result",
+        value_type="string",
+        description="Result details of MCP server initialization",
+        example_value="Success",
+    ),
+    OTELAttribute(
         key="mcs.mcp.dialog_schema",
         value_type="string",
         description="Dialog schema name for MCP server",
@@ -465,6 +471,12 @@ MCS_CUSTOM_ATTRIBUTES: list[OTELAttribute] = [
         value_type="string",
         description="JSON-encoded outputs passed between plan steps",
         example_value='{"key": "value"}',
+    ),
+    OTELAttribute(
+        key="mcs.plan.tool_definition_count",
+        value_type="string",
+        description="Number of tool definitions in the plan",
+        example_value="3",
     ),
     OTELAttribute(
         key="mcs.auth.mode",
@@ -489,6 +501,18 @@ MCS_CUSTOM_ATTRIBUTES: list[OTELAttribute] = [
         value_type="string",
         description="Number of filtered results from knowledge search",
         example_value="3",
+    ),
+    OTELAttribute(
+        key="mcs.knowledge.filtered_results",
+        value_type="string",
+        description="Filtered search results from knowledge base",
+        example_value='[{"id": "doc1"}]',
+    ),
+    OTELAttribute(
+        key="mcs.knowledge.full_results",
+        value_type="string",
+        description="Full search results from knowledge base",
+        example_value='[{"id": "doc1"}]',
     ),
     OTELAttribute(
         key="mcs.knowledge.source_count",
@@ -539,6 +563,18 @@ MCS_CUSTOM_ATTRIBUTES: list[OTELAttribute] = [
         example_value='{"query": "expense policy"}',
     ),
     OTELAttribute(
+        key="mcs.step.arguments",
+        value_type="string",
+        description="Arguments bound to a plan step",
+        example_value='{"arg": "value"}',
+    ),
+    OTELAttribute(
+        key="mcs.step.observation",
+        value_type="string",
+        description="Observation JSON from plan step execution",
+        example_value='{"status": "ok"}',
+    ),
+    OTELAttribute(
         key="mcs.topic.type",
         value_type="string",
         description="Type of dialog redirect target",
@@ -561,6 +597,66 @@ MCS_CUSTOM_ATTRIBUTES: list[OTELAttribute] = [
         value_type="string",
         description="Sub-error code for more specific error classification",
         example_value="ActionExecutionTimeout",
+    ),
+    OTELAttribute(
+        key="mcs.ai_builder.action_id",
+        value_type="string",
+        description="ID of the AI Builder action executed",
+        example_value="invokeAIBuilderModelAction_drcwKG",
+    ),
+    OTELAttribute(
+        key="mcs.ai_builder.input",
+        value_type="string",
+        description="Input provided to the AI Builder model",
+        example_value='{"query": "..."}',
+    ),
+    OTELAttribute(
+        key="mcs.ai_builder.output_text",
+        value_type="string",
+        description="Output text returned by the AI Builder model",
+        example_value="Found 5 matches...",
+    ),
+    OTELAttribute(
+        key="mcs.ai_builder.topic_id",
+        value_type="string",
+        description="Topic ID where AI Builder action occurred",
+        example_value="5abce19e-...",
+    ),
+    OTELAttribute(
+        key="mcs.ai_builder.topic_schema_name",
+        value_type="string",
+        description="Schema name of the topic",
+        example_value="auto_agent_550xh.topic.Searchdevice",
+    ),
+    OTELAttribute(
+        key="mcs.step.blocked_error",
+        value_type="string",
+        description="Error details when a step is blocked by policy",
+        example_value='{"code": "contentFiltered"}',
+    ),
+    OTELAttribute(
+        key="mcs.knowledge.cited_sources",
+        value_type="string",
+        description="JSON-encoded list of cited knowledge sources",
+        example_value='[{"name": "policy.pdf"}]',
+    ),
+    OTELAttribute(
+        key="mcs.knowledge.completion_state",
+        value_type="string",
+        description="State of knowledge retrieval (Executed, NotExecuted)",
+        example_value="Executed",
+    ),
+    OTELAttribute(
+        key="mcs.knowledge.failed_source_types",
+        value_type="string",
+        description="List of knowledge source types that failed",
+        example_value='["SharePoint"]',
+    ),
+    OTELAttribute(
+        key="mcs.knowledge.is_searched",
+        value_type="string",
+        description="Whether knowledge search was performed",
+        example_value="True",
     ),
 ]
 

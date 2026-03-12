@@ -170,7 +170,6 @@ def apply_mapping(
             # Apply attribute mappings
             attributes: dict[str, str] = {}
             attributes["gen_ai.operation.name"] = rule.otel_operation_name.value
-            attributes["gen_ai.system"] = "copilot_studio"
 
             for am in rule.attribute_mappings:
                 raw = _resolve_property(entity.properties, am.mcs_property)
@@ -316,7 +315,7 @@ def generate_default_mapping() -> MappingSpecification:
                 mcs_entity_type="trace_event",
                 mcs_value_type="SessionInfo",
                 otel_operation_name=OTELOperationName.invoke_agent,
-                otel_span_kind=OTELSpanKind.SERVER,
+                otel_span_kind=OTELSpanKind.CLIENT,
                 span_name_template="invoke_agent {bot_name}",
                 is_root=True,
                 attribute_mappings=[
@@ -408,11 +407,11 @@ def generate_default_mapping() -> MappingSpecification:
                     ),
                     AttributeMapping(
                         mcs_property="user_msg",
-                        otel_attribute="user.message_preview",
+                        otel_attribute="mcs.user.message_preview",
                     ),
                     AttributeMapping(
                         mcs_property="bot_msg",
-                        otel_attribute="assistant.message_preview",
+                        otel_attribute="mcs.assistant.message_preview",
                     ),
                     AttributeMapping(
                         mcs_property="topic_name",
@@ -458,6 +457,14 @@ def generate_default_mapping() -> MappingSpecification:
                         otel_attribute="mcs.knowledge.output_sources",
                     ),
                     AttributeMapping(
+                        mcs_property="filtered_results_json",
+                        otel_attribute="mcs.knowledge.filtered_results",
+                    ),
+                    AttributeMapping(
+                        mcs_property="full_results_json",
+                        otel_attribute="mcs.knowledge.full_results",
+                    ),
+                    AttributeMapping(
                         mcs_property="full_result_count",
                         otel_attribute="mcs.knowledge.full_result_count",
                     ),
@@ -488,6 +495,10 @@ def generate_default_mapping() -> MappingSpecification:
                     AttributeMapping(
                         mcs_property="is_final_plan",
                         otel_attribute="mcs.plan.is_final",
+                    ),
+                    AttributeMapping(
+                        mcs_property="tool_definition_count",
+                        otel_attribute="mcs.plan.tool_definition_count",
                     ),
                     AttributeMapping(
                         mcs_property="think_time_ms",
@@ -528,6 +539,10 @@ def generate_default_mapping() -> MappingSpecification:
                     AttributeMapping(
                         mcs_property="arguments_json",
                         otel_attribute="gen_ai.tool.call.arguments",
+                    ),
+                    AttributeMapping(
+                        mcs_property="arguments_json",
+                        otel_attribute="mcs.step.arguments",
                     ),
                     AttributeMapping(
                         mcs_property="mcp_tool_name",
@@ -579,8 +594,16 @@ def generate_default_mapping() -> MappingSpecification:
                         otel_attribute="mcs.tool.is_error",
                     ),
                     AttributeMapping(
+                        mcs_property="observation_json",
+                        otel_attribute="mcs.step.observation",
+                    ),
+                    AttributeMapping(
                         mcs_property="retrieval_document_count",
                         otel_attribute="mcs.retrieval.document_count",
+                    ),
+                    AttributeMapping(
+                        mcs_property="filtered_result_count",
+                        otel_attribute="mcs.knowledge.filtered_result_count",
                     ),
                     AttributeMapping(
                         mcs_property="retrieval_document_names",
@@ -604,6 +627,10 @@ def generate_default_mapping() -> MappingSpecification:
                     ),
                     AttributeMapping(
                         mcs_property="plan_used_outputs",
+                        otel_attribute="mcs.plan.used_outputs",
+                    ),
+                    AttributeMapping(
+                        mcs_property="planUsedOutputs",
                         otel_attribute="mcs.plan.used_outputs",
                     ),
                     AttributeMapping(
@@ -694,6 +721,10 @@ def generate_default_mapping() -> MappingSpecification:
                         mcs_property="mcp_dialog_schema",
                         otel_attribute="mcs.mcp.dialog_schema",
                     ),
+                    AttributeMapping(
+                        mcs_property="mcp_initialization_result",
+                        otel_attribute="mcs.mcp.initialization_result",
+                    ),
                 ],
             ),
             # --- MCP tools list ---
@@ -713,6 +744,14 @@ def generate_default_mapping() -> MappingSpecification:
                     AttributeMapping(
                         mcs_property="tool_names",
                         otel_attribute="mcs.mcp.tool_names",
+                    ),
+                    AttributeMapping(
+                        mcs_property="mcp_tools_list_json",
+                        otel_attribute="mcs.mcp.tools_list",
+                    ),
+                    AttributeMapping(
+                        mcs_property="dialogSchemaName",
+                        otel_attribute="mcs.mcp.dialog_schema",
                     ),
                 ],
             ),
@@ -769,6 +808,10 @@ def generate_default_mapping() -> MappingSpecification:
                     AttributeMapping(
                         mcs_property="user_ask",
                         otel_attribute="mcs.orchestrator.user_ask",
+                    ),
+                    AttributeMapping(
+                        mcs_property="isFinalPlan",
+                        otel_attribute="mcs.plan.is_final",
                     ),
                     AttributeMapping(
                         mcs_property="plan_summary",
@@ -1001,6 +1044,109 @@ def generate_default_mapping() -> MappingSpecification:
                 parent_rule_id="session_root",
                 attribute_mappings=[],
             ),
+            # --- AI Builder Trace ---
+            SpanMappingRule(
+                rule_id="ai_builder_trace",
+                rule_name="AI Builder Trace",
+                mcs_entity_type="trace_event",
+                mcs_value_type="AIBuilderTraceData",
+                otel_operation_name=OTELOperationName.execute_tool,
+                otel_span_kind=OTELSpanKind.INTERNAL,
+                span_name_template="ai_builder {actionId}",
+                parent_rule_id="user_turn",
+                attribute_mappings=[
+                    AttributeMapping(
+                        mcs_property="actionId",
+                        otel_attribute="mcs.ai_builder.action_id",
+                    ),
+                    AttributeMapping(
+                        mcs_property="input",
+                        otel_attribute="mcs.ai_builder.input",
+                    ),
+                    AttributeMapping(
+                        mcs_property="outputText",
+                        otel_attribute="mcs.ai_builder.output_text",
+                    ),
+                    AttributeMapping(
+                        mcs_property="topicId",
+                        otel_attribute="mcs.ai_builder.topic_id",
+                    ),
+                    AttributeMapping(
+                        mcs_property="topicSchemaName",
+                        otel_attribute="mcs.ai_builder.topic_schema_name",
+                    ),
+                ],
+            ),
+            # --- Dynamic Plan Step Blocked ---
+            SpanMappingRule(
+                rule_id="dynamic_plan_step_blocked",
+                rule_name="Plan Step Blocked",
+                mcs_entity_type="trace_event",
+                mcs_value_type="DynamicPlanStepBlocked",
+                otel_operation_name=OTELOperationName.execute_tool,
+                otel_span_kind=OTELSpanKind.INTERNAL,
+                span_name_template="blocked_step {taskDialogId}",
+                parent_rule_id="user_turn",
+                attribute_mappings=[
+                    AttributeMapping(
+                        mcs_property="executionTime",
+                        otel_attribute="mcs.tool.execution_time",
+                    ),
+                    AttributeMapping(
+                        mcs_property="hasRecommendations",
+                        otel_attribute="mcs.step.has_recommendations",
+                    ),
+                    AttributeMapping(
+                        mcs_property="messageBlockedError",
+                        otel_attribute="mcs.step.blocked_error",
+                    ),
+                    AttributeMapping(
+                        mcs_property="planIdentifier",
+                        otel_attribute="mcs.plan.id",
+                    ),
+                    AttributeMapping(
+                        mcs_property="state",
+                        otel_attribute="mcs.step.state",
+                    ),
+                    AttributeMapping(
+                        mcs_property="stepId",
+                        otel_attribute="mcs.plan.step_id",
+                    ),
+                    AttributeMapping(
+                        mcs_property="taskDialogId",
+                        otel_attribute="gen_ai.tool.name",
+                    ),
+                ],
+            ),
+            # --- Knowledge Trace Data ---
+            SpanMappingRule(
+                rule_id="knowledge_trace_data",
+                rule_name="Knowledge Trace Data",
+                mcs_entity_type="trace_event",
+                mcs_value_type="KnowledgeTraceData",
+                otel_operation_name=OTELOperationName.knowledge_retrieval,
+                otel_span_kind=OTELSpanKind.INTERNAL,
+                span_name_template="knowledge.trace.data",
+                parent_rule_id="user_turn",
+                attribute_mappings=[
+                    AttributeMapping(
+                        mcs_property="citedKnowledgeSources",
+                        otel_attribute="mcs.knowledge.cited_sources",
+                    ),
+                    AttributeMapping(
+                        mcs_property="completionState",
+                        otel_attribute="mcs.knowledge.completion_state",
+                    ),
+                    AttributeMapping(
+                        mcs_property="failedKnowledgeSourcesTypes",
+                        otel_attribute="mcs.knowledge.failed_source_types",
+                    ),
+                    AttributeMapping(
+                        mcs_property="isKnowledgeSearched",
+                        otel_attribute="mcs.knowledge.is_searched",
+                    ),
+                ],
+            ),
         ],
     )
 
@@ -1015,6 +1161,12 @@ def _flatten_spans(span: OTELSpan) -> list[OTELSpan]:
 
 def _span_to_otlp(span: OTELSpan) -> dict:
     """Convert a single OTELSpan to OTLP JSON format."""
+    status_code = 0  # UNSET
+    if span.status == "OK":
+        status_code = 1
+    elif span.status == "ERROR":
+        status_code = 2
+
     otlp: dict = {
         "traceId": span.trace_id,
         "spanId": span.span_id,
@@ -1027,7 +1179,7 @@ def _span_to_otlp(span: OTELSpan) -> dict:
             {"key": k, "value": {"stringValue": str(v)}}
             for k, v in span.attributes.items()
         ],
-        "status": {"code": 1 if span.status == "OK" else 2},
+        "status": {"code": status_code},
     }
 
     # Serialize events if present

@@ -172,8 +172,8 @@ class TestOperationNamesAndKinds:
         assert "invoke_agent" in zava_trace.root_span.name
         assert zava_trace.root_span.attributes["gen_ai.operation.name"] == "invoke_agent"
 
-    def test_root_span_kind_server(self, zava_trace):
-        assert zava_trace.root_span.kind == OTELSpanKind.SERVER
+    def test_root_span_kind_client(self, zava_trace):
+        assert zava_trace.root_span.kind == OTELSpanKind.CLIENT
 
     def test_chat_spans_are_client(self, zava_trace):
         chat_spans = [c for c in zava_trace.root_span.children if "chat" in c.name]
@@ -335,7 +335,7 @@ class TestNoSessionInfo:
 
     def test_pva_root_span_is_invoke_agent(self, pva_trace):
         assert pva_trace.root_span.attributes["gen_ai.operation.name"] == "invoke_agent"
-        assert pva_trace.root_span.kind == OTELSpanKind.SERVER
+        assert pva_trace.root_span.kind == OTELSpanKind.CLIENT
 
     def test_pva_conversation_id_in_root(self, pva_entities):
         root = [e for e in pva_entities if e.entity_id == "session_root"][0]
@@ -478,7 +478,7 @@ class TestMultiFormatTraces:
 
     def test_rex_root_span_is_invoke_agent(self, rex_trace):
         assert rex_trace.root_span.attributes["gen_ai.operation.name"] == "invoke_agent"
-        assert rex_trace.root_span.kind == OTELSpanKind.SERVER
+        assert rex_trace.root_span.kind == OTELSpanKind.CLIENT
 
     def test_rex_has_channel_msteams(self, rex_transcript):
         assert rex_transcript.session_info.get("channel") == "msteams"

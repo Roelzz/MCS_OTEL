@@ -252,7 +252,7 @@ class OTELSpan(BaseModel):
     end_time_ns: int
     attributes: dict = Field(default_factory=dict)
     events: list[dict] = Field(default_factory=list)
-    status: str = "OK"
+    status: str = "UNSET"
     children: list["OTELSpan"] = Field(default_factory=list)
 
 

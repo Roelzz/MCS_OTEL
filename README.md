@@ -6,9 +6,12 @@ Converts Microsoft Copilot Studio conversation transcripts into OpenTelemetry-co
 
 - Upload MCS transcript JSON or Dataverse CSV (dialog.json / Dataverse export / Rex format)
 - Visual ETL mapping UI (React Flow) — drag-and-drop MCS entities to OTEL targets
-- 19 default mapping rules covering 18 event types
+- 28 default mapping rules covering 26 event types
+- 104 OTEL attribute definitions across 10 categories
+- Full OTLP compliance (Client SpanKind for root, UNSET status codes)
+- Deep support for MCP, AI Builder, and Knowledge Retrieval tracing
 - Live span tree preview with OTLP JSON export
-- Transcript analysis CLI for discovering unmapped events
+- Self-learning improvement engine (`improve.py`) for auto-discovering mappings
 
 ## Quick Start
 
@@ -28,7 +31,7 @@ MCS_OTEL/
 ├── models.py                # Data models: MCSActivity, OTELSpan, SpanMappingRule, etc.
 ├── parsers.py               # Transcript parsing, entity extraction, enrichment
 ├── converter.py             # Entity → OTEL span mapping, OTLP JSON export
-├── otel_registry.py         # 56 OTEL attribute definitions across 10 categories
+├── otel_registry.py         # 104 OTEL attribute definitions across 10 categories
 ├── analyze_transcripts.py   # CLI: transcript coverage analysis
 ├── improve.py               # Self-learning mapper improvement engine
 ├── pyproject.toml           # Project config and dependencies
@@ -189,4 +192,4 @@ Results are saved to `improve_runs/`:
 
 ## Tech Stack
 
-Python 3.12, UV, Reflex, Pydantic, React Flow
+Python 3.14, UV, Reflex, Pydantic, React Flow
