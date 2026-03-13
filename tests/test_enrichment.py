@@ -3,7 +3,8 @@ import os
 
 import pytest
 
-from converter import apply_mapping, generate_default_mapping
+from config_loader import load_default_mapping
+from converter import apply_mapping
 from models import OTELSpanKind
 from parsers import extract_entities, parse_bot_content, parse_transcript
 
@@ -31,7 +32,7 @@ def zava_entities(zava_transcript):
 
 @pytest.fixture
 def zava_trace(zava_entities):
-    spec = generate_default_mapping()
+    spec = load_default_mapping()
     return apply_mapping(zava_entities, spec)
 
 
@@ -294,7 +295,7 @@ def rex_entities(rex_transcript):
 
 @pytest.fixture
 def rex_trace(rex_entities):
-    spec = generate_default_mapping()
+    spec = load_default_mapping()
     return apply_mapping(rex_entities, spec)
 
 
@@ -316,7 +317,7 @@ def pva_entities(pva_transcript):
 
 @pytest.fixture
 def pva_trace(pva_entities):
-    spec = generate_default_mapping()
+    spec = load_default_mapping()
     return apply_mapping(pva_entities, spec)
 
 
@@ -601,7 +602,7 @@ def zava_entities_with_bot_content(zava_transcript, bot_content):
 
 @pytest.fixture
 def zava_trace_with_bot_content(zava_entities_with_bot_content):
-    spec = generate_default_mapping()
+    spec = load_default_mapping()
     return apply_mapping(zava_entities_with_bot_content, spec)
 
 

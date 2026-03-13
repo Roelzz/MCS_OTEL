@@ -11,7 +11,7 @@ from pathlib import Path
 import typer
 from loguru import logger
 
-from converter import generate_default_mapping
+from config_loader import load_default_mapping
 from models import AttributeMapping, OTELOperationName, OTELSpanKind, SpanMappingRule
 from parsers import TRACKED_EVENT_TYPES, _resolve_activities, parse_transcript
 
@@ -541,7 +541,7 @@ def main(
 
     # Aggregate and analyze
     stats = aggregate_stats(file_stats_list)
-    mapping_spec = generate_default_mapping()
+    mapping_spec = load_default_mapping()
     stats = build_mapping_gap_analysis(stats, mapping_spec.rules)
 
     # Render report

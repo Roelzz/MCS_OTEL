@@ -1,0 +1,1940 @@
+{
+  "version": "1.0",
+  "name": "MCS-to-OTEL GenAI Mapping",
+  "description": "Config-driven mapping from Microsoft Copilot Studio transcripts to OpenTelemetry GenAI spans",
+  "service_name": "copilot-studio",
+  "event_metadata": [
+    {
+      "value_type": "AIBuilderTraceData",
+      "tracked": true,
+      "label": "AI Builder Trace",
+      "entity_type": "trace_event",
+      "default_output_type": "span"
+    },
+    {
+      "value_type": "CSATSurveyRequest",
+      "tracked": true,
+      "label": "CSAT Request",
+      "entity_type": "trace_event",
+      "default_output_type": "span"
+    },
+    {
+      "value_type": "CSATSurveyResponse",
+      "tracked": true,
+      "label": "CSAT Response",
+      "entity_type": "trace_event",
+      "default_output_type": "event"
+    },
+    {
+      "value_type": "DialogRedirect",
+      "tracked": true,
+      "label": "Dialog Redirect",
+      "entity_type": "trace_event",
+      "default_output_type": "span"
+    },
+    {
+      "value_type": "DialogTracingInfo",
+      "tracked": true,
+      "label": "Dialog Tracing",
+      "entity_type": "trace_event",
+      "default_output_type": "span"
+    },
+    {
+      "value_type": "DynamicPlanFinished",
+      "tracked": true,
+      "label": "Plan Finished",
+      "entity_type": "trace_event",
+      "default_output_type": "span"
+    },
+    {
+      "value_type": "DynamicPlanReceived",
+      "tracked": true,
+      "label": "Plan Received",
+      "entity_type": "trace_event",
+      "default_output_type": "span"
+    },
+    {
+      "value_type": "DynamicPlanReceivedDebug",
+      "tracked": true,
+      "label": "Plan Received (Debug)",
+      "entity_type": "trace_event",
+      "default_output_type": "span"
+    },
+    {
+      "value_type": "DynamicPlanStepBindUpdate",
+      "tracked": true,
+      "label": "Plan Step Bind Update",
+      "entity_type": "trace_event",
+      "default_output_type": "span"
+    },
+    {
+      "value_type": "DynamicPlanStepBlocked",
+      "tracked": true,
+      "label": "Plan Step Blocked",
+      "entity_type": "trace_event",
+      "default_output_type": "span"
+    },
+    {
+      "value_type": "DynamicPlanStepFinished",
+      "tracked": true,
+      "label": "Plan Step Finished",
+      "entity_type": "trace_event",
+      "default_output_type": "span"
+    },
+    {
+      "value_type": "DynamicPlanStepTriggered",
+      "tracked": true,
+      "label": "Plan Step Triggered",
+      "entity_type": "trace_event",
+      "default_output_type": "span"
+    },
+    {
+      "value_type": "DynamicServerInitialize",
+      "tracked": true,
+      "label": "MCP Server Init",
+      "entity_type": "trace_event",
+      "default_output_type": "span"
+    },
+    {
+      "value_type": "DynamicServerInitializeConfirmation",
+      "tracked": true,
+      "label": "MCP Server Init Confirmation",
+      "entity_type": "trace_event",
+      "default_output_type": "span"
+    },
+    {
+      "value_type": "DynamicServerToolsList",
+      "tracked": true,
+      "label": "MCP Tools List",
+      "entity_type": "trace_event",
+      "default_output_type": "span"
+    },
+    {
+      "value_type": "ErrorCode",
+      "tracked": true,
+      "label": "Error Code",
+      "entity_type": "trace_event",
+      "default_output_type": "event"
+    },
+    {
+      "value_type": "ErrorTraceData",
+      "tracked": true,
+      "label": "Error",
+      "entity_type": "trace_event",
+      "default_output_type": "event"
+    },
+    {
+      "value_type": "ImpliedSuccess",
+      "tracked": true,
+      "label": "Implied Success",
+      "entity_type": "trace_event",
+      "default_output_type": "event"
+    },
+    {
+      "value_type": "KnowledgeTraceData",
+      "tracked": true,
+      "label": "Knowledge Trace Data",
+      "entity_type": "trace_event",
+      "default_output_type": "span"
+    },
+    {
+      "value_type": "PRRSurveyRequest",
+      "tracked": true,
+      "label": "PRR Request",
+      "entity_type": "trace_event",
+      "default_output_type": "span"
+    },
+    {
+      "value_type": "PRRSurveyResponse",
+      "tracked": true,
+      "label": "PRR Response",
+      "entity_type": "trace_event",
+      "default_output_type": "event"
+    },
+    {
+      "value_type": "ProtocolInfo",
+      "tracked": true,
+      "label": "Protocol Info",
+      "entity_type": "trace_event",
+      "default_output_type": "span"
+    },
+    {
+      "value_type": "SkillInfo",
+      "tracked": true,
+      "label": "Skill Info",
+      "entity_type": "trace_event",
+      "default_output_type": "span"
+    },
+    {
+      "value_type": "UniversalSearchToolTraceData",
+      "tracked": true,
+      "label": "Knowledge Search",
+      "entity_type": "trace_event",
+      "default_output_type": "span"
+    },
+    {
+      "value_type": "UnknownIntent",
+      "tracked": true,
+      "label": "Unknown Intent",
+      "entity_type": "trace_event",
+      "default_output_type": "event"
+    },
+    {
+      "value_type": "VariableAssignment",
+      "tracked": true,
+      "label": "Variable Assignment",
+      "entity_type": "trace_event",
+      "default_output_type": "event"
+    }
+  ],
+  "enrichment_rules": [
+    {
+      "value_type": "DynamicPlanStepBindUpdate",
+      "derived_fields": [
+        {
+          "target": "search_query",
+          "op": "extract_path",
+          "source": "arguments.search_query",
+          "separator": "",
+          "template": "",
+          "condition": {}
+        },
+        {
+          "target": "search_keywords",
+          "op": "str_coerce",
+          "source": "arguments.search_keywords",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_isinstance": "dict",
+            "source_root": "arguments"
+          }
+        },
+        {
+          "target": "arguments_json",
+          "op": "json_dump",
+          "source": "arguments",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_isinstance": "dict"
+          }
+        },
+        {
+          "target": "mcp_tool_name",
+          "op": "conditional",
+          "source": "taskDialogId",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "prefix": "MCP:",
+            "extract": "split_last_colon"
+          }
+        }
+      ]
+    },
+    {
+      "value_type": "DynamicPlanStepFinished",
+      "derived_fields": [
+        {
+          "target": "tool_result_text",
+          "op": "join",
+          "source": "observation.content[*].text",
+          "separator": "\n",
+          "template": "",
+          "condition": {
+            "if_not_empty": true,
+            "parent_key": "observation.content"
+          }
+        },
+        {
+          "target": "tool_is_error",
+          "op": "str_coerce",
+          "source": "observation.isError",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_not_empty": true,
+            "parent_key": "observation.content"
+          }
+        },
+        {
+          "target": "retrieval_document_count",
+          "op": "len",
+          "source": "observation.search_result.search_results",
+          "separator": "",
+          "template": "",
+          "condition": {}
+        },
+        {
+          "target": "filtered_result_count",
+          "op": "len",
+          "source": "observation.search_result.search_results",
+          "separator": "",
+          "template": "",
+          "condition": {}
+        },
+        {
+          "target": "retrieval_document_names",
+          "op": "join",
+          "source": "observation.search_result.search_results[*].Name",
+          "separator": ", ",
+          "template": "",
+          "condition": {}
+        },
+        {
+          "target": "retrieval_source_types",
+          "op": "join_unique_sorted",
+          "source": "observation.search_result.search_results[*].Type",
+          "separator": ", ",
+          "template": "",
+          "condition": {}
+        },
+        {
+          "target": "retrieval_errors",
+          "op": "json_dump",
+          "source": "observation.search_result.search_errors",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_not_empty": true
+          }
+        },
+        {
+          "target": "connector_result_url",
+          "op": "extract_path",
+          "source": "observation.messageLink",
+          "separator": "",
+          "template": "",
+          "condition": {}
+        },
+        {
+          "target": "hitl_responder_id",
+          "op": "extract_path",
+          "source": "observation.responderObjectId",
+          "separator": "",
+          "template": "",
+          "condition": {}
+        },
+        {
+          "target": "observation_json",
+          "op": "json_dump",
+          "source": "observation",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_isinstance": "dict"
+          }
+        },
+        {
+          "target": "plan_used_outputs",
+          "op": "json_dump",
+          "source": "planUsedOutputs",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_isinstance": "dict",
+            "if_not_empty": true
+          }
+        }
+      ]
+    },
+    {
+      "value_type": "UniversalSearchToolTraceData",
+      "derived_fields": [
+        {
+          "target": "knowledge_source_count",
+          "op": "len",
+          "source": "knowledgeSources",
+          "separator": "",
+          "template": "",
+          "condition": {}
+        },
+        {
+          "target": "knowledge_sources",
+          "op": "join",
+          "source": "knowledgeSources",
+          "separator": ", ",
+          "template": "",
+          "condition": {}
+        },
+        {
+          "target": "output_knowledge_sources",
+          "op": "join",
+          "source": "outputKnowledgeSources",
+          "separator": ", ",
+          "template": "",
+          "condition": {}
+        },
+        {
+          "target": "full_result_count",
+          "op": "len",
+          "source": "fullResults",
+          "separator": "",
+          "template": "",
+          "condition": {}
+        },
+        {
+          "target": "full_results_json",
+          "op": "json_dump",
+          "source": "fullResults",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_isinstance": "list"
+          }
+        },
+        {
+          "target": "filtered_result_count",
+          "op": "len",
+          "source": "filteredResults",
+          "separator": "",
+          "template": "",
+          "condition": {}
+        },
+        {
+          "target": "filtered_results_json",
+          "op": "json_dump",
+          "source": "filteredResults",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_isinstance": "list"
+          }
+        }
+      ]
+    },
+    {
+      "value_type": "DynamicServerToolsList",
+      "derived_fields": [
+        {
+          "target": "tool_count",
+          "op": "len",
+          "source": "toolsList",
+          "separator": "",
+          "template": "",
+          "condition": {}
+        },
+        {
+          "target": "tool_names",
+          "op": "join",
+          "source": "toolsList[*].displayName|identifier",
+          "separator": ", ",
+          "template": "",
+          "condition": {}
+        },
+        {
+          "target": "mcp_tools_list_json",
+          "op": "json_dump",
+          "source": "toolsList",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_isinstance": "list"
+          }
+        }
+      ]
+    },
+    {
+      "value_type": "DynamicServerInitialize",
+      "derived_fields": [
+        {
+          "target": "mcp_initialization_result",
+          "op": "json_dump",
+          "source": "initializationResult",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_isinstance": "dict"
+          }
+        },
+        {
+          "target": "mcp_server_name",
+          "op": "extract_path",
+          "source": "initializationResult.serverInfo.name",
+          "separator": "",
+          "template": "",
+          "condition": {}
+        },
+        {
+          "target": "mcp_server_version",
+          "op": "extract_path",
+          "source": "initializationResult.serverInfo.version",
+          "separator": "",
+          "template": "",
+          "condition": {}
+        },
+        {
+          "target": "mcp_protocol_version",
+          "op": "extract_path",
+          "source": "initializationResult.protocolVersion",
+          "separator": "",
+          "template": "",
+          "condition": {}
+        },
+        {
+          "target": "mcp_session_id",
+          "op": "extract_path",
+          "source": "initializationResult.sessionInfo.id",
+          "separator": "",
+          "template": "",
+          "condition": {}
+        },
+        {
+          "target": "mcp_capabilities",
+          "op": "json_dump",
+          "source": "initializationResult.capabilities",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_isinstance": "dict",
+            "if_not_empty": true
+          }
+        },
+        {
+          "target": "mcp_dialog_schema",
+          "op": "rename",
+          "source": "dialogSchemaName",
+          "separator": "",
+          "template": "",
+          "condition": {}
+        }
+      ]
+    },
+    {
+      "value_type": "DynamicPlanReceived",
+      "derived_fields": [
+        {
+          "target": "step_count",
+          "op": "len",
+          "source": "steps",
+          "separator": "",
+          "template": "",
+          "condition": {}
+        },
+        {
+          "target": "is_final_plan",
+          "op": "str_coerce",
+          "source": "isFinalPlan",
+          "separator": "",
+          "template": "",
+          "condition": {}
+        },
+        {
+          "target": "tool_definition_count",
+          "op": "len",
+          "source": "toolDefinitions",
+          "separator": "",
+          "template": "",
+          "condition": {}
+        }
+      ]
+    },
+    {
+      "value_type": "DynamicPlanReceivedDebug",
+      "derived_fields": [
+        {
+          "target": "user_ask",
+          "op": "str_coerce",
+          "source": "ask",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_not_empty": true
+          }
+        },
+        {
+          "target": "plan_summary",
+          "op": "str_coerce",
+          "source": "summary",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_not_empty": true
+          }
+        }
+      ]
+    },
+    {
+      "value_type": "DynamicPlanFinished",
+      "derived_fields": [
+        {
+          "target": "was_cancelled",
+          "op": "str_coerce",
+          "source": "wasCancelled",
+          "separator": "",
+          "template": "",
+          "condition": {}
+        }
+      ]
+    },
+    {
+      "value_type": "DialogTracingInfo",
+      "derived_fields": [
+        {
+          "target": "action_count",
+          "op": "len",
+          "source": "actions",
+          "separator": "",
+          "template": "",
+          "condition": {}
+        },
+        {
+          "target": "action_types",
+          "op": "join",
+          "source": "actions[*].actionType",
+          "separator": ", ",
+          "template": "",
+          "condition": {}
+        },
+        {
+          "target": "topic_ids",
+          "op": "join_unique_sorted",
+          "source": "actions[*].topicId",
+          "separator": ", ",
+          "template": "",
+          "condition": {}
+        },
+        {
+          "target": "dialog_exceptions",
+          "op": "join",
+          "source": "actions[*].exception",
+          "separator": "; ",
+          "template": "",
+          "condition": {
+            "if_not_empty": true
+          }
+        }
+      ]
+    },
+    {
+      "value_type": "ErrorTraceData",
+      "derived_fields": [
+        {
+          "target": "errorCode",
+          "op": "str_coerce",
+          "source": "errorCode",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_not_empty": true
+          }
+        },
+        {
+          "target": "errorMessage",
+          "op": "str_coerce",
+          "source": "errorMessage",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_not_empty": true
+          }
+        },
+        {
+          "target": "isUserError",
+          "op": "str_coerce",
+          "source": "isUserError",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_not_none": true
+          }
+        }
+      ]
+    },
+    {
+      "value_type": "ErrorCode",
+      "derived_fields": [
+        {
+          "target": "errorCode",
+          "op": "str_coerce",
+          "source": "errorCode",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_not_empty": true
+          }
+        },
+        {
+          "target": "errorMessage",
+          "op": "str_coerce",
+          "source": "errorMessage",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_not_empty": true
+          }
+        }
+      ]
+    },
+    {
+      "value_type": "VariableAssignment",
+      "derived_fields": [
+        {
+          "target": "name",
+          "op": "str_coerce",
+          "source": "name",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_not_empty": true
+          }
+        },
+        {
+          "target": "value",
+          "op": "str_coerce",
+          "source": "value",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_not_none": true
+          }
+        },
+        {
+          "target": "type",
+          "op": "str_coerce",
+          "source": "type",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_not_empty": true
+          }
+        }
+      ]
+    },
+    {
+      "value_type": "UnknownIntent",
+      "derived_fields": [
+        {
+          "target": "userQuery",
+          "op": "str_coerce",
+          "source": "userQuery",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_not_empty": true
+          }
+        }
+      ]
+    },
+    {
+      "value_type": "CSATSurveyResponse",
+      "derived_fields": [
+        {
+          "target": "csat_score",
+          "op": "str_coerce",
+          "source": "score",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_not_none": true
+          }
+        },
+        {
+          "target": "csat_comment",
+          "op": "str_coerce",
+          "source": "comment",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_not_empty": true
+          }
+        }
+      ]
+    },
+    {
+      "value_type": "PRRSurveyResponse",
+      "derived_fields": [
+        {
+          "target": "prr_response",
+          "op": "str_coerce",
+          "source": "response",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_not_none": true
+          }
+        }
+      ]
+    },
+    {
+      "value_type": "ImpliedSuccess",
+      "derived_fields": [
+        {
+          "target": "implied_success_dialog_id",
+          "op": "str_coerce",
+          "source": "dialogId",
+          "separator": "",
+          "template": "",
+          "condition": {
+            "if_not_empty": true
+          }
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "rule_id": "session_root",
+      "rule_name": "Session Root Span",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "SessionInfo",
+      "otel_operation_name": "invoke_agent",
+      "otel_span_kind": "CLIENT",
+      "span_name_template": "invoke_agent {bot_name}",
+      "is_root": true,
+      "parent_rule_id": null,
+      "output_type": "span",
+      "attribute_mappings": [
+        {
+          "mcs_property": "outcome",
+          "otel_attribute": "mcs.session.outcome",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "session_type",
+          "otel_attribute": "mcs.session.type",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "bot_name",
+          "otel_attribute": "gen_ai.agent.name",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "conversation_id",
+          "otel_attribute": "gen_ai.conversation.id",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "",
+          "otel_attribute": "gen_ai.provider.name",
+          "transform": "constant",
+          "transform_value": "copilot_studio"
+        },
+        {
+          "mcs_property": "channel",
+          "otel_attribute": "mcs.channel",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "environment",
+          "otel_attribute": "mcs.environment",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "tenant",
+          "otel_attribute": "mcs.tenant",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "user_timezone",
+          "otel_attribute": "enduser.timezone",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "user_locale",
+          "otel_attribute": "enduser.locale",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "user_id",
+          "otel_attribute": "enduser.id",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "ai_model",
+          "otel_attribute": "gen_ai.request.model",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "knowledge_sources",
+          "otel_attribute": "mcs.knowledge.configured_sources",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "mcp_connector_name",
+          "otel_attribute": "mcs.mcp.connector_name",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "auth_mode",
+          "otel_attribute": "mcs.auth.mode",
+          "transform": "direct",
+          "transform_value": ""
+        }
+      ]
+    },
+    {
+      "rule_id": "user_turn",
+      "rule_name": "User-Bot Turn",
+      "mcs_entity_type": "turn",
+      "mcs_value_type": "",
+      "otel_operation_name": "chat",
+      "otel_span_kind": "CLIENT",
+      "span_name_template": "chat turn:{turn_index}",
+      "is_root": false,
+      "parent_rule_id": "session_root",
+      "output_type": "span",
+      "attribute_mappings": [
+        {
+          "mcs_property": "user_msg",
+          "otel_attribute": "gen_ai.input.messages",
+          "transform": "template",
+          "transform_value": "[{{\"role\":\"user\",\"content\":\"{value}\"}}]"
+        },
+        {
+          "mcs_property": "bot_msg",
+          "otel_attribute": "gen_ai.output.messages",
+          "transform": "template",
+          "transform_value": "[{{\"role\":\"assistant\",\"content\":\"{value}\"}}]"
+        },
+        {
+          "mcs_property": "user_msg",
+          "otel_attribute": "mcs.user.message_preview",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "bot_msg",
+          "otel_attribute": "mcs.assistant.message_preview",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "topic_name",
+          "otel_attribute": "mcs.topic.name",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "turn_index",
+          "otel_attribute": "mcs.turn.index",
+          "transform": "direct",
+          "transform_value": ""
+        }
+      ]
+    },
+    {
+      "rule_id": "knowledge_search",
+      "rule_name": "Knowledge Search",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "UniversalSearchToolTraceData",
+      "otel_operation_name": "knowledge.retrieval",
+      "otel_span_kind": "CLIENT",
+      "span_name_template": "knowledge.retrieval",
+      "is_root": false,
+      "parent_rule_id": "user_turn",
+      "output_type": "span",
+      "attribute_mappings": [
+        {
+          "mcs_property": "toolId",
+          "otel_attribute": "gen_ai.tool.name",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "",
+          "otel_attribute": "gen_ai.tool.type",
+          "transform": "constant",
+          "transform_value": "datastore"
+        },
+        {
+          "mcs_property": "knowledge_sources",
+          "otel_attribute": "mcs.knowledge.sources",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "knowledge_source_count",
+          "otel_attribute": "mcs.knowledge.source_count",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "output_knowledge_sources",
+          "otel_attribute": "mcs.knowledge.output_sources",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "filtered_results_json",
+          "otel_attribute": "mcs.knowledge.filtered_results",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "full_results_json",
+          "otel_attribute": "mcs.knowledge.full_results",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "full_result_count",
+          "otel_attribute": "mcs.knowledge.full_result_count",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "filtered_result_count",
+          "otel_attribute": "mcs.knowledge.filtered_result_count",
+          "transform": "direct",
+          "transform_value": ""
+        }
+      ]
+    },
+    {
+      "rule_id": "dynamic_plan",
+      "rule_name": "Dynamic Plan",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "DynamicPlanReceived",
+      "otel_operation_name": "chain",
+      "otel_span_kind": "INTERNAL",
+      "span_name_template": "chain plan",
+      "is_root": false,
+      "parent_rule_id": "user_turn",
+      "output_type": "span",
+      "attribute_mappings": [
+        {
+          "mcs_property": "planIdentifier",
+          "otel_attribute": "mcs.plan.id",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "step_count",
+          "otel_attribute": "mcs.plan.step_count",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "is_final_plan",
+          "otel_attribute": "mcs.plan.is_final",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "tool_definition_count",
+          "otel_attribute": "mcs.plan.tool_definition_count",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "think_time_ms",
+          "otel_attribute": "mcs.orchestrator.think_time_ms",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "parentPlanIdentifier",
+          "otel_attribute": "mcs.plan.parent_id",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "parentPlanStepIdentifier",
+          "otel_attribute": "mcs.plan.parent_step_id",
+          "transform": "direct",
+          "transform_value": ""
+        }
+      ]
+    },
+    {
+      "rule_id": "plan_step_bind",
+      "rule_name": "Plan Step Bind (Tool Input)",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "DynamicPlanStepBindUpdate",
+      "otel_operation_name": "chain",
+      "otel_span_kind": "INTERNAL",
+      "span_name_template": "chain bind:{taskDialogId}",
+      "is_root": false,
+      "parent_rule_id": "dynamic_plan",
+      "output_type": "span",
+      "attribute_mappings": [
+        {
+          "mcs_property": "taskDialogId",
+          "otel_attribute": "gen_ai.tool.name",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "search_query",
+          "otel_attribute": "gen_ai.retrieval.query.text",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "search_keywords",
+          "otel_attribute": "mcs.search.keywords",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "arguments_json",
+          "otel_attribute": "gen_ai.tool.call.arguments",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "arguments_json",
+          "otel_attribute": "mcs.step.arguments",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "mcp_tool_name",
+          "otel_attribute": "mcs.mcp.tool_name",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "planIdentifier",
+          "otel_attribute": "mcs.plan.id",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "stepId",
+          "otel_attribute": "mcs.plan.step_id",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "autoFilledArguments",
+          "otel_attribute": "mcs.step.auto_filled_arguments",
+          "transform": "direct",
+          "transform_value": ""
+        }
+      ]
+    },
+    {
+      "rule_id": "plan_step_finished",
+      "rule_name": "Plan Step Finished (Tool Output)",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "DynamicPlanStepFinished",
+      "otel_operation_name": "execute_tool",
+      "otel_span_kind": "CLIENT",
+      "span_name_template": "execute_tool {taskDialogId}",
+      "is_root": false,
+      "parent_rule_id": "dynamic_plan",
+      "output_type": "span",
+      "attribute_mappings": [
+        {
+          "mcs_property": "taskDialogId",
+          "otel_attribute": "gen_ai.tool.name",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "executionTime",
+          "otel_attribute": "mcs.tool.execution_time",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "state",
+          "otel_attribute": "mcs.tool.step_state",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "tool_result_text",
+          "otel_attribute": "gen_ai.tool.call.result",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "tool_is_error",
+          "otel_attribute": "mcs.tool.is_error",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "observation_json",
+          "otel_attribute": "mcs.step.observation",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "retrieval_document_count",
+          "otel_attribute": "mcs.retrieval.document_count",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "filtered_result_count",
+          "otel_attribute": "mcs.knowledge.filtered_result_count",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "retrieval_document_names",
+          "otel_attribute": "mcs.retrieval.documents",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "retrieval_source_types",
+          "otel_attribute": "mcs.retrieval.source_type",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "retrieval_errors",
+          "otel_attribute": "mcs.retrieval.errors",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "connector_result_url",
+          "otel_attribute": "mcs.connector.result_url",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "hitl_responder_id",
+          "otel_attribute": "mcs.hitl.responder_id",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "plan_used_outputs",
+          "otel_attribute": "mcs.plan.used_outputs",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "planUsedOutputs",
+          "otel_attribute": "mcs.plan.used_outputs",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "planIdentifier",
+          "otel_attribute": "mcs.plan.id",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "stepId",
+          "otel_attribute": "mcs.plan.step_id",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "hasRecommendations",
+          "otel_attribute": "mcs.step.has_recommendations",
+          "transform": "direct",
+          "transform_value": ""
+        }
+      ]
+    },
+    {
+      "rule_id": "plan_finished",
+      "rule_name": "Plan Finished",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "DynamicPlanFinished",
+      "otel_operation_name": "chain",
+      "otel_span_kind": "INTERNAL",
+      "span_name_template": "chain plan_finished",
+      "is_root": false,
+      "parent_rule_id": "dynamic_plan",
+      "output_type": "span",
+      "attribute_mappings": [
+        {
+          "mcs_property": "planId",
+          "otel_attribute": "mcs.plan.id",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "was_cancelled",
+          "otel_attribute": "mcs.plan.was_cancelled",
+          "transform": "direct",
+          "transform_value": ""
+        }
+      ]
+    },
+    {
+      "rule_id": "topic_classification",
+      "rule_name": "Topic Classification",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "DialogRedirect",
+      "otel_operation_name": "dialog_redirect",
+      "otel_span_kind": "INTERNAL",
+      "span_name_template": "dialog_redirect",
+      "is_root": false,
+      "parent_rule_id": "user_turn",
+      "output_type": "span",
+      "attribute_mappings": [
+        {
+          "mcs_property": "targetDialogId",
+          "otel_attribute": "mcs.topic.name",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "targetDialogType",
+          "otel_attribute": "mcs.topic.type",
+          "transform": "direct",
+          "transform_value": ""
+        }
+      ]
+    },
+    {
+      "rule_id": "mcp_server_init",
+      "rule_name": "MCP Server Initialize",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "DynamicServerInitialize",
+      "otel_operation_name": "create_agent",
+      "otel_span_kind": "INTERNAL",
+      "span_name_template": "create_agent mcp_init",
+      "is_root": false,
+      "parent_rule_id": "user_turn",
+      "output_type": "span",
+      "attribute_mappings": [
+        {
+          "mcs_property": "mcp_server_name",
+          "otel_attribute": "mcs.mcp.server_name",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "mcp_server_version",
+          "otel_attribute": "mcs.mcp.server_version",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "mcp_protocol_version",
+          "otel_attribute": "mcs.mcp.protocol_version",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "mcp_session_id",
+          "otel_attribute": "mcs.mcp.session_id",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "mcp_capabilities",
+          "otel_attribute": "mcs.mcp.capabilities",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "mcp_dialog_schema",
+          "otel_attribute": "mcs.mcp.dialog_schema",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "mcp_initialization_result",
+          "otel_attribute": "mcs.mcp.initialization_result",
+          "transform": "direct",
+          "transform_value": ""
+        }
+      ]
+    },
+    {
+      "rule_id": "mcp_tools_list",
+      "rule_name": "MCP Tools List",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "DynamicServerToolsList",
+      "otel_operation_name": "create_agent",
+      "otel_span_kind": "INTERNAL",
+      "span_name_template": "create_agent mcp_tools",
+      "is_root": false,
+      "parent_rule_id": "user_turn",
+      "output_type": "span",
+      "attribute_mappings": [
+        {
+          "mcs_property": "tool_count",
+          "otel_attribute": "mcs.mcp.tool_count",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "tool_names",
+          "otel_attribute": "mcs.mcp.tool_names",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "mcp_tools_list_json",
+          "otel_attribute": "mcs.mcp.tools_list",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "dialogSchemaName",
+          "otel_attribute": "mcs.mcp.dialog_schema",
+          "transform": "direct",
+          "transform_value": ""
+        }
+      ]
+    },
+    {
+      "rule_id": "plan_step_triggered",
+      "rule_name": "Plan Step Triggered",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "DynamicPlanStepTriggered",
+      "otel_operation_name": "chain",
+      "otel_span_kind": "INTERNAL",
+      "span_name_template": "chain step:{taskDialogId}",
+      "is_root": false,
+      "parent_rule_id": "dynamic_plan",
+      "output_type": "span",
+      "attribute_mappings": [
+        {
+          "mcs_property": "thought",
+          "otel_attribute": "mcs.orchestrator.thought",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "taskDialogId",
+          "otel_attribute": "gen_ai.tool.name",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "type",
+          "otel_attribute": "mcs.step.type",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "planIdentifier",
+          "otel_attribute": "mcs.plan.id",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "stepId",
+          "otel_attribute": "mcs.plan.step_id",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "state",
+          "otel_attribute": "mcs.step.state",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "hasRecommendations",
+          "otel_attribute": "mcs.step.has_recommendations",
+          "transform": "direct",
+          "transform_value": ""
+        }
+      ]
+    },
+    {
+      "rule_id": "plan_received_debug",
+      "rule_name": "Plan Received Debug",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "DynamicPlanReceivedDebug",
+      "otel_operation_name": "chain",
+      "otel_span_kind": "INTERNAL",
+      "span_name_template": "chain plan_debug",
+      "is_root": false,
+      "parent_rule_id": "dynamic_plan",
+      "output_type": "span",
+      "attribute_mappings": [
+        {
+          "mcs_property": "user_ask",
+          "otel_attribute": "mcs.orchestrator.user_ask",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "isFinalPlan",
+          "otel_attribute": "mcs.plan.is_final",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "plan_summary",
+          "otel_attribute": "mcs.orchestrator.plan_summary",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "planIdentifier",
+          "otel_attribute": "mcs.plan.id",
+          "transform": "direct",
+          "transform_value": ""
+        }
+      ]
+    },
+    {
+      "rule_id": "dialog_tracing",
+      "rule_name": "Dialog Tracing",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "DialogTracingInfo",
+      "otel_operation_name": "chain",
+      "otel_span_kind": "INTERNAL",
+      "span_name_template": "chain dialog_trace",
+      "is_root": false,
+      "parent_rule_id": "user_turn",
+      "output_type": "span",
+      "attribute_mappings": [
+        {
+          "mcs_property": "action_types",
+          "otel_attribute": "mcs.dialog.action_types",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "topic_ids",
+          "otel_attribute": "mcs.dialog.topic_ids",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "dialog_exceptions",
+          "otel_attribute": "mcs.dialog.exceptions",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "action_count",
+          "otel_attribute": "mcs.dialog.action_count",
+          "transform": "direct",
+          "transform_value": ""
+        }
+      ]
+    },
+    {
+      "rule_id": "error_trace",
+      "rule_name": "Error Trace",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "ErrorTraceData",
+      "otel_operation_name": "chain",
+      "otel_span_kind": "INTERNAL",
+      "span_name_template": "error",
+      "is_root": false,
+      "parent_rule_id": "user_turn",
+      "output_type": "event",
+      "attribute_mappings": [
+        {
+          "mcs_property": "errorCode",
+          "otel_attribute": "error.type",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "errorMessage",
+          "otel_attribute": "error.message",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "isUserError",
+          "otel_attribute": "mcs.error.is_user_error",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "errorSubCode",
+          "otel_attribute": "mcs.error.sub_code",
+          "transform": "direct",
+          "transform_value": ""
+        }
+      ]
+    },
+    {
+      "rule_id": "error_code",
+      "rule_name": "Error Code",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "ErrorCode",
+      "otel_operation_name": "chain",
+      "otel_span_kind": "INTERNAL",
+      "span_name_template": "error_code",
+      "is_root": false,
+      "parent_rule_id": "user_turn",
+      "output_type": "event",
+      "attribute_mappings": [
+        {
+          "mcs_property": "errorCode",
+          "otel_attribute": "error.type",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "errorMessage",
+          "otel_attribute": "error.message",
+          "transform": "direct",
+          "transform_value": ""
+        }
+      ]
+    },
+    {
+      "rule_id": "variable_assignment",
+      "rule_name": "Variable Assignment",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "VariableAssignment",
+      "otel_operation_name": "chain",
+      "otel_span_kind": "INTERNAL",
+      "span_name_template": "variable_assignment",
+      "is_root": false,
+      "parent_rule_id": "user_turn",
+      "output_type": "event",
+      "attribute_mappings": [
+        {
+          "mcs_property": "name",
+          "otel_attribute": "mcs.variable.name",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "value",
+          "otel_attribute": "mcs.variable.value",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "type",
+          "otel_attribute": "mcs.variable.type",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "id",
+          "otel_attribute": "mcs.variable.id",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "newValue",
+          "otel_attribute": "mcs.variable.new_value",
+          "transform": "direct",
+          "transform_value": ""
+        }
+      ]
+    },
+    {
+      "rule_id": "unknown_intent",
+      "rule_name": "Unknown Intent",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "UnknownIntent",
+      "otel_operation_name": "intent_recognition",
+      "otel_span_kind": "INTERNAL",
+      "span_name_template": "unknown_intent",
+      "is_root": false,
+      "parent_rule_id": "user_turn",
+      "output_type": "event",
+      "attribute_mappings": [
+        {
+          "mcs_property": "userQuery",
+          "otel_attribute": "gen_ai.input.messages",
+          "transform": "direct",
+          "transform_value": ""
+        }
+      ]
+    },
+    {
+      "rule_id": "mcp_server_init_confirmation",
+      "rule_name": "MCP Server Init Confirmation",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "DynamicServerInitializeConfirmation",
+      "otel_operation_name": "create_agent",
+      "otel_span_kind": "INTERNAL",
+      "span_name_template": "create_agent mcp_init_confirm",
+      "is_root": false,
+      "parent_rule_id": "mcp_server_init",
+      "output_type": "span",
+      "attribute_mappings": [
+        {
+          "mcs_property": "dialogSchemaName",
+          "otel_attribute": "mcs.mcp.dialog_schema",
+          "transform": "direct",
+          "transform_value": ""
+        }
+      ]
+    },
+    {
+      "rule_id": "protocol_info",
+      "rule_name": "Protocol Info",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "ProtocolInfo",
+      "otel_operation_name": "chain",
+      "otel_span_kind": "INTERNAL",
+      "span_name_template": "chain protocol_info",
+      "is_root": false,
+      "parent_rule_id": "user_turn",
+      "output_type": "span",
+      "attribute_mappings": []
+    },
+    {
+      "rule_id": "skill_info",
+      "rule_name": "Skill Info",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "SkillInfo",
+      "otel_operation_name": "create_agent",
+      "otel_span_kind": "INTERNAL",
+      "span_name_template": "create_agent skill_info",
+      "is_root": false,
+      "parent_rule_id": "user_turn",
+      "output_type": "span",
+      "attribute_mappings": []
+    },
+    {
+      "rule_id": "csat_response",
+      "rule_name": "CSAT Response",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "CSATSurveyResponse",
+      "otel_operation_name": "chain",
+      "otel_span_kind": "INTERNAL",
+      "span_name_template": "csat_response",
+      "is_root": false,
+      "parent_rule_id": "session_root",
+      "output_type": "event",
+      "attribute_mappings": [
+        {
+          "mcs_property": "",
+          "otel_attribute": "gen_ai.evaluation.name",
+          "transform": "constant",
+          "transform_value": "csat"
+        },
+        {
+          "mcs_property": "csat_score",
+          "otel_attribute": "gen_ai.evaluation.score.value",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "csat_comment",
+          "otel_attribute": "gen_ai.evaluation.score.label",
+          "transform": "direct",
+          "transform_value": ""
+        }
+      ]
+    },
+    {
+      "rule_id": "prr_response",
+      "rule_name": "PRR Response",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "PRRSurveyResponse",
+      "otel_operation_name": "chain",
+      "otel_span_kind": "INTERNAL",
+      "span_name_template": "prr_response",
+      "is_root": false,
+      "parent_rule_id": "session_root",
+      "output_type": "event",
+      "attribute_mappings": [
+        {
+          "mcs_property": "",
+          "otel_attribute": "gen_ai.evaluation.name",
+          "transform": "constant",
+          "transform_value": "prr"
+        },
+        {
+          "mcs_property": "prr_response",
+          "otel_attribute": "gen_ai.evaluation.score.value",
+          "transform": "direct",
+          "transform_value": ""
+        }
+      ]
+    },
+    {
+      "rule_id": "implied_success",
+      "rule_name": "Implied Success",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "ImpliedSuccess",
+      "otel_operation_name": "chain",
+      "otel_span_kind": "INTERNAL",
+      "span_name_template": "implied_success",
+      "is_root": false,
+      "parent_rule_id": "session_root",
+      "output_type": "event",
+      "attribute_mappings": [
+        {
+          "mcs_property": "implied_success_dialog_id",
+          "otel_attribute": "mcs.dialog.id",
+          "transform": "direct",
+          "transform_value": ""
+        }
+      ]
+    },
+    {
+      "rule_id": "escalation",
+      "rule_name": "Escalation Requested",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "EscalationRequested",
+      "otel_operation_name": "chain",
+      "otel_span_kind": "INTERNAL",
+      "span_name_template": "escalation",
+      "is_root": false,
+      "parent_rule_id": "session_root",
+      "output_type": "event",
+      "attribute_mappings": []
+    },
+    {
+      "rule_id": "handoff",
+      "rule_name": "HandOff",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "HandOff",
+      "otel_operation_name": "chain",
+      "otel_span_kind": "INTERNAL",
+      "span_name_template": "handoff",
+      "is_root": false,
+      "parent_rule_id": "session_root",
+      "output_type": "event",
+      "attribute_mappings": []
+    },
+    {
+      "rule_id": "ai_builder_trace",
+      "rule_name": "AI Builder Trace",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "AIBuilderTraceData",
+      "otel_operation_name": "execute_tool",
+      "otel_span_kind": "INTERNAL",
+      "span_name_template": "ai_builder {actionId}",
+      "is_root": false,
+      "parent_rule_id": "user_turn",
+      "output_type": "span",
+      "attribute_mappings": [
+        {
+          "mcs_property": "actionId",
+          "otel_attribute": "mcs.ai_builder.action_id",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "input",
+          "otel_attribute": "mcs.ai_builder.input",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "outputText",
+          "otel_attribute": "mcs.ai_builder.output_text",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "topicId",
+          "otel_attribute": "mcs.ai_builder.topic_id",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "topicSchemaName",
+          "otel_attribute": "mcs.ai_builder.topic_schema_name",
+          "transform": "direct",
+          "transform_value": ""
+        }
+      ]
+    },
+    {
+      "rule_id": "dynamic_plan_step_blocked",
+      "rule_name": "Plan Step Blocked",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "DynamicPlanStepBlocked",
+      "otel_operation_name": "execute_tool",
+      "otel_span_kind": "INTERNAL",
+      "span_name_template": "blocked_step {taskDialogId}",
+      "is_root": false,
+      "parent_rule_id": "user_turn",
+      "output_type": "span",
+      "attribute_mappings": [
+        {
+          "mcs_property": "executionTime",
+          "otel_attribute": "mcs.tool.execution_time",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "hasRecommendations",
+          "otel_attribute": "mcs.step.has_recommendations",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "messageBlockedError",
+          "otel_attribute": "mcs.step.blocked_error",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "planIdentifier",
+          "otel_attribute": "mcs.plan.id",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "state",
+          "otel_attribute": "mcs.step.state",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "stepId",
+          "otel_attribute": "mcs.plan.step_id",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "taskDialogId",
+          "otel_attribute": "gen_ai.tool.name",
+          "transform": "direct",
+          "transform_value": ""
+        }
+      ]
+    },
+    {
+      "rule_id": "knowledge_trace_data",
+      "rule_name": "Knowledge Trace Data",
+      "mcs_entity_type": "trace_event",
+      "mcs_value_type": "KnowledgeTraceData",
+      "otel_operation_name": "knowledge.retrieval",
+      "otel_span_kind": "INTERNAL",
+      "span_name_template": "knowledge.trace.data",
+      "is_root": false,
+      "parent_rule_id": "user_turn",
+      "output_type": "span",
+      "attribute_mappings": [
+        {
+          "mcs_property": "citedKnowledgeSources",
+          "otel_attribute": "mcs.knowledge.cited_sources",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "completionState",
+          "otel_attribute": "mcs.knowledge.completion_state",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "failedKnowledgeSourcesTypes",
+          "otel_attribute": "mcs.knowledge.failed_source_types",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "isKnowledgeSearched",
+          "otel_attribute": "mcs.knowledge.is_searched",
+          "transform": "direct",
+          "transform_value": ""
+        }
+      ]
+    }
+  ]
+}

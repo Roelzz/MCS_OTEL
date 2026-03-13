@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from analyze_transcripts import discover_files, iter_transcripts
-from converter import generate_default_mapping
+from config_loader import load_default_mapping
 from improve import (
     FileAnalysis,
     Finding,
@@ -37,7 +37,7 @@ def fixtures_dir() -> Path:
 
 @pytest.fixture
 def default_spec() -> MappingSpecification:
-    return generate_default_mapping()
+    return load_default_mapping()
 
 
 @pytest.fixture

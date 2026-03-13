@@ -3,7 +3,7 @@ import uuid
 
 import reflex as rx
 
-from converter import generate_default_mapping
+from config_loader import load_default_mapping
 from models import (
     AttributeMapping,
     MappingSpecification,
@@ -399,7 +399,7 @@ class MappingMixin(rx.State, mixin=True):
 
     def load_defaults(self):
         """Populate from generate_default_mapping(), also populate connections and flow edges."""
-        spec = generate_default_mapping()
+        spec = load_default_mapping()
         self.mapping_spec = spec.model_dump()
 
         # Build connections from rules

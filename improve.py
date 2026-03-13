@@ -29,6 +29,7 @@ from analyze_transcripts import (
     suggest_attribute_mappings,
     suggest_mapping_rule,
 )
+from config_loader import load_default_mapping
 from converter import apply_mapping, generate_default_mapping, to_otlp_json
 from models import (
     AttributeMapping,
@@ -610,7 +611,7 @@ def run_improvement_loop(
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    spec = generate_default_mapping()
+    spec = load_default_mapping()
     tracked_types = set(TRACKED_EVENT_TYPES)
     runs: list[ImprovementRun] = []
     prev_coverage = 0.0
