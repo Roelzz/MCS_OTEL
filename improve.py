@@ -170,7 +170,7 @@ def _analyze_single_content(
 
     try:
         transcript = parse_transcript(content)
-        entities = extract_entities(transcript)
+        entities = extract_entities(transcript, spec=spec)
     except Exception as e:
         fa.error = str(e)
         logger.debug("Failed to parse {}: {}", label, e)
@@ -232,7 +232,7 @@ def _analyze_single_file(
     try:
         content = fpath.read_text(encoding="utf-8")
         transcript = parse_transcript(content)
-        entities = extract_entities(transcript)
+        entities = extract_entities(transcript, spec=spec)
     except Exception as e:
         fa.error = str(e)
         logger.debug("Failed to parse {}: {}", fpath, e)
@@ -433,6 +433,14 @@ def apply_auto_fixes(
                 continue
 
             tracked_types.add(finding.value_type)
+
+            # Add EventMetadata so extract_entities picks it up
+            spec.event_metadata.append(EventMetadata(
+                value_type=finding.value_type,
+                tracked=True,
+                label=finding.value_type,
+                entity_type="trace_event",
+            ))
 
             # Generate a new rule
             rule_id = _to_snake_case(finding.value_type)
