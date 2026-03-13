@@ -23,8 +23,6 @@ class ImproveMixin(rx.State, mixin=True):
     iterations: list[dict] = []
     pending_review: list[dict] = []
     code_export: dict[str, str] = {}
-    # Original snippet lists for apply — preserves multi-line snippet boundaries
-    _code_snippets: dict[str, list[str]] = {}
     # Proposed spec from generate_spec_changes
     _proposed_spec: dict = {}
 
@@ -162,7 +160,6 @@ class ImproveMixin(rx.State, mixin=True):
         self.iterations = []
         self.pending_review = []
         self.code_export = {}
-        self._code_snippets = {}
         yield
 
         try:
@@ -199,11 +196,6 @@ class ImproveMixin(rx.State, mixin=True):
             proposed = improve_mod.generate_spec_changes(all_applied, review_findings, current_spec)
             self._proposed_spec = proposed.model_dump()
 
-            # Also generate code export for display
-            code_changes = improve_mod.generate_code_changes(all_applied, review_findings)
-            self._code_snippets = code_changes
-            self.code_export = {k: "\n".join(v) for k, v in code_changes.items()}
-
             if runs:
                 final = runs[-1]
                 self.improve_progress = (
@@ -231,24 +223,20 @@ class ImproveMixin(rx.State, mixin=True):
         if idx < 0:
             return
         finding = self.pending_review.pop(idx)
-        snippet = finding.get("code_snippet", "")
-        if snippet:
-            cat = finding.get("category", "")
-            if cat in ("new_type", "new_enrichment"):
-                key = "parsers.py"
-            else:
-                key = "converter.py"
-
-            # Update display string
-            existing = self.code_export.get(key, "")
-            self.code_export = {
-                **self.code_export,
-                key: (existing + "\n" + snippet).strip(),
-            }
-            # Update snippet list for apply
-            snippets = self._code_snippets.get(key, [])
-            snippets.append(snippet)
-            self._code_snippets = {**self._code_snippets, key: snippets}
+        # Re-generate spec with the accepted finding included
+        if self._proposed_spec:
+            from models import MappingSpecification
+            current = MappingSpecification.model_validate(self._proposed_spec)
+            accepted = improve_mod.Finding(
+                category=finding.get("category", ""),
+                auto_fixable=True,
+                value_type=finding.get("value_type", ""),
+                property_name=finding.get("property_name", ""),
+                sample_value=finding.get("sample_value", {}),
+                code_snippet=finding.get("code_snippet", ""),
+            )
+            updated = improve_mod.generate_spec_changes([], [accepted], current)
+            self._proposed_spec = updated.model_dump()
 
     def reject_finding(self, finding_id: int):
         """Reject a needs-review finding."""
@@ -343,7 +331,6 @@ class ImproveMixin(rx.State, mixin=True):
         self.iterations = []
         self.pending_review = []
         self.code_export = {}
-        self._code_snippets = {}
         self._proposed_spec = {}
         self.apply_results = {}
         self.apply_diff = ""

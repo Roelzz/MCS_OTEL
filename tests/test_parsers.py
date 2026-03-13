@@ -170,7 +170,7 @@ class TestSpecDrivenExtraction:
         assert isinstance(entities, list)
 
     def test_fallback_without_spec(self, transcript):
-        """Without spec, extract_entities() should use hardcoded TRACKED_EVENT_TYPES."""
+        """Without spec, extract_entities() auto-loads default spec from JSON."""
         entities_no_spec = extract_entities(transcript)
         spec = load_default_mapping()
         entities_with_spec = extract_entities(transcript, spec=spec)

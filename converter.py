@@ -301,13 +301,6 @@ def apply_mapping(
     )
 
 
-def generate_default_mapping() -> MappingSpecification:
-    """Load default mapping from JSON config. Kept for backward compat."""
-    from config_loader import load_default_mapping
-
-    return load_default_mapping()
-
-
 def _flatten_spans(span: OTELSpan) -> list[OTELSpan]:
     """Recursively flatten span tree depth-first."""
     result = [span]

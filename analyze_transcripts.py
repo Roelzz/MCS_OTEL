@@ -340,7 +340,7 @@ def render_markdown(
         f"- **Files analyzed:** {len(file_stats_list)}",
         f"- **Total activities:** {total_activities}",
         f"- **Unique valueTypes:** {total_vts}",
-        f"- **Tracked (in TRACKED_EVENT_TYPES):** {tracked_count}",
+        f"- **Tracked (in event_metadata):** {tracked_count}",
         f"- **Untracked:** {untracked_count}",
         f"- **Have mapping rules:** {has_rule_count}",
         f"- **Tracked but missing rules:** {tracked_no_rule}",
@@ -357,7 +357,7 @@ def render_markdown(
     lines.extend([
         "",
         "> **Note:** `ConversationInfo` and `SessionInfo` are handled specially in `_extract_session_info()`,",
-        "> not via `TRACKED_EVENT_TYPES`. They appear in the table below but are not \"untracked\" — they are",
+        "> not via `event_metadata`. They appear in the table below but are not \"untracked\" — they are",
         "> extracted into `MCSTranscript.session_info` and mapped via the `session_root` rule.",
         "",
         "## All ValueTypes",
@@ -385,7 +385,7 @@ def render_markdown(
             "",
             "## Untracked ValueTypes",
             "",
-            "These valueTypes appear in transcripts but are not in `TRACKED_EVENT_TYPES`.",
+            "These valueTypes appear in transcripts but are not tracked in `config/default_mapping.json`.",
             "Consider adding them if they carry useful observability data.",
             "",
         ])
@@ -474,7 +474,7 @@ def render_markdown(
             "",
             "## Tracked Types Missing Rules",
             "",
-            "These types are in `TRACKED_EVENT_TYPES` but have no `SpanMappingRule` in `generate_default_mapping()`.",
+            "These types are tracked in `event_metadata` but have no `SpanMappingRule` in `config/default_mapping.json`.",
             "",
         ])
         for vt in sorted(missing_rules):

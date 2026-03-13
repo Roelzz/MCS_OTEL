@@ -17,7 +17,6 @@ from improve import (
     apply_auto_fixes,
     classify_findings,
     compute_coverage,
-    generate_code_changes,
     generate_spec_changes,
     run_improvement_loop,
 )
@@ -338,43 +337,6 @@ class TestComputeCoverage:
         assert fill_rate == pytest.approx(0.5)
 
 
-# ---------------------------------------------------------------------------
-# TestGenerateCodeChanges
-# ---------------------------------------------------------------------------
-
-
-class TestGenerateCodeChanges:
-    def test_new_type_generates_all_files(self):
-        """New type should generate changes for parsers, converter, and registry."""
-        findings = [
-            Finding(
-                category="new_type",
-                auto_fixable=True,
-                value_type="FreshEvent",
-                sample_value={"prop1": "val1"},
-                code_snippet="SpanMappingRule(...)",
-            )
-        ]
-        changes = generate_code_changes(findings, [])
-        assert "parsers.py" in changes
-        assert "converter.py" in changes
-        assert "otel_registry.py" in changes
-
-    def test_new_attribute_generates_converter_and_registry(self):
-        """New attribute should generate changes for converter and registry."""
-        findings = [
-            Finding(
-                category="new_attribute",
-                auto_fixable=True,
-                value_type="ErrorTraceData",
-                property_name="newField",
-                code_snippet='AttributeMapping(...)',
-            )
-        ]
-        changes = generate_code_changes(findings, [])
-        assert "converter.py" in changes
-        assert "otel_registry.py" in changes
-
 
 # ---------------------------------------------------------------------------
 # TestGenerateSpecChanges
@@ -481,10 +443,9 @@ class TestImprovementLoop:
             output_dir=tmp_output,
         )
         assert tmp_output.exists()
-        # Should have at least one iteration JSON + code_export + improved_mapping
+        # Should have at least one iteration JSON + improved_mapping
         json_files_out = list(tmp_output.glob("iter_*.json"))
         assert len(json_files_out) >= 1
-        assert (tmp_output / "code_export.py").exists()
         assert (tmp_output / "improved_mapping.json").exists()
 
     def test_empty_dir_no_crash(self, tmp_path: Path, tmp_output: Path):

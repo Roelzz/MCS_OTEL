@@ -398,7 +398,7 @@ class MappingMixin(rx.State, mixin=True):
         self.mapping_spec = spec.model_dump()
 
     def load_defaults(self):
-        """Populate from generate_default_mapping(), also populate connections and flow edges."""
+        """Populate from config/default_mapping.json, also populate connections and flow edges."""
         spec = load_default_mapping()
         self.mapping_spec = spec.model_dump()
 
