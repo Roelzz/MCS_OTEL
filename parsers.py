@@ -354,8 +354,13 @@ def extract_entities(
     spec: MappingSpecification | None = None,
 ) -> list[MCSEntity]:
     """Flatten parsed transcript into entity list for the mapping UI."""
-    # Build tracked set and label map from spec if provided, else fall back to hardcoded
-    if spec and spec.event_metadata:
+    # Load default spec if not provided
+    if spec is None:
+        from config_loader import load_default_mapping
+        spec = load_default_mapping()
+
+    # Build tracked set and label map from spec
+    if spec.event_metadata:
         tracked_types = {em.value_type for em in spec.event_metadata if em.tracked}
         label_map = {em.value_type: em.label for em in spec.event_metadata if em.label}
     else:
@@ -427,7 +432,8 @@ def extract_entities(
         props["timestamp"] = a.timestamp
 
         # Enrich entities with flattened properties for mapping
-        _enrich_entity_properties(vt, props)
+        if spec.enrichment_rules:
+            apply_enrichment_rules(props, spec.enrichment_rules, vt)
 
         entities.append(
             MCSEntity(
@@ -475,176 +481,202 @@ def _compute_think_times(entities: list[MCSEntity]) -> None:
             plan_recv.properties["think_time_ms"] = str(int(delta_ms))
 
 
-def _enrich_entity_properties(vt: str, props: dict) -> None:
-    """Enrich entity properties by flattening nested structures for OTEL mapping."""
-    if vt == "DynamicPlanStepBindUpdate":
-        args = props.get("arguments", {})
-        if isinstance(args, dict):
-            if "search_query" in args:
-                props["search_query"] = args["search_query"]
-            if "search_keywords" in args:
-                props["search_keywords"] = str(args["search_keywords"])
-            props["arguments_json"] = json.dumps(args)
-        task_id = props.get("taskDialogId", "")
-        if task_id.startswith("MCP:"):
-            props["mcp_tool_name"] = task_id.split(":")[-1]
+def apply_enrichment_rules(
+    props: dict,
+    enrichment_rules: list,
+    value_type: str,
+) -> None:
+    """Find matching EnrichmentRule, apply each EnrichmentOp in-place."""
+    from models import EnrichmentRule
 
-    elif vt == "DynamicPlanStepFinished":
-        obs = props.get("observation", {})
-        if isinstance(obs, dict):
-            # MCP tool results
-            if "content" in obs:
-                texts = [c.get("text", "") for c in obs.get("content", []) if isinstance(c, dict)]
-                props["tool_result_text"] = "\n".join(texts)
-                props["tool_is_error"] = str(obs.get("isError", False))
-            # Search results
-            if "search_result" in obs:
-                sr = obs["search_result"]
-                results = sr.get("search_results", []) if isinstance(sr, dict) else []
-                props["retrieval_document_count"] = str(len(results))
-                props["filtered_result_count"] = str(len(results)) # Alias for mcs.knowledge.filtered_result_count
-                props["retrieval_document_names"] = ", ".join(
-                    r.get("Name", "") or "" for r in results if isinstance(r, dict)
-                )
-                props["retrieval_source_types"] = ", ".join(
-                    sorted(set(r.get("Type", "") for r in results if isinstance(r, dict) and r.get("Type")))
-                )
-                errors = sr.get("search_errors", []) if isinstance(sr, dict) else []
-                if errors:
-                    props["retrieval_errors"] = json.dumps(errors)
-            # Connector results
-            if "messageLink" in obs:
-                props["connector_result_url"] = obs["messageLink"]
-            # HITL responder
-            if "responderObjectId" in obs:
-                props["hitl_responder_id"] = obs["responderObjectId"]
-            props["observation_json"] = json.dumps(obs)
-        used_outputs = props.get("planUsedOutputs", {})
-        if isinstance(used_outputs, dict) and used_outputs:
-            props["plan_used_outputs"] = json.dumps(used_outputs)
+    for rule in enrichment_rules:
+        if rule.value_type != value_type:
+            continue
+        for op in rule.derived_fields:
+            if not _check_condition(props, op):
+                continue
+            _ENRICHMENT_OPS.get(op.op, _op_noop)(props, op)
+        return
 
-    elif vt == "UniversalSearchToolTraceData":
-        ks = props.get("knowledgeSources", [])
-        if isinstance(ks, list):
-            props["knowledge_source_count"] = str(len(ks))
-            props["knowledge_sources"] = ", ".join(str(s) for s in ks)
-        output_ks = props.get("outputKnowledgeSources", [])
-        if isinstance(output_ks, list):
-            props["output_knowledge_sources"] = ", ".join(str(s) for s in output_ks)
-        full_results = props.get("fullResults", [])
-        if isinstance(full_results, list):
-            props["full_result_count"] = str(len(full_results))
-            props["full_results_json"] = json.dumps(full_results)
-        filtered_results = props.get("filteredResults", [])
-        if isinstance(filtered_results, list):
-            props["filtered_result_count"] = str(len(filtered_results))
-            props["filtered_results_json"] = json.dumps(filtered_results)
 
-    elif vt == "DynamicServerToolsList":
-        tools = props.get("toolsList", [])
-        if isinstance(tools, list):
-            props["tool_count"] = str(len(tools))
-            props["tool_names"] = ", ".join(
-                t.get("displayName", t.get("identifier", "")) for t in tools if isinstance(t, dict)
-            )
-            props["mcp_tools_list_json"] = json.dumps(tools)
+def _check_condition(props: dict, op) -> bool:
+    """Check if an op's condition is met."""
+    cond = op.condition
+    if not cond:
+        return True
 
-    elif vt == "DynamicServerInitialize":
-        init_result = props.get("initializationResult", {})
-        if isinstance(init_result, dict):
-            props["mcp_initialization_result"] = json.dumps(init_result)
-            server_info = init_result.get("serverInfo", {})
-            if isinstance(server_info, dict):
-                if server_info.get("name"):
-                    props["mcp_server_name"] = server_info["name"]
-                if server_info.get("version"):
-                    props["mcp_server_version"] = server_info["version"]
-            if init_result.get("protocolVersion"):
-                props["mcp_protocol_version"] = init_result["protocolVersion"]
-            session_info = init_result.get("sessionInfo", {})
-            if isinstance(session_info, dict) and session_info.get("id"):
-                props["mcp_session_id"] = session_info["id"]
-            caps = init_result.get("capabilities", {})
-            if isinstance(caps, dict) and caps:
-                props["mcp_capabilities"] = json.dumps(caps)
-        if props.get("dialogSchemaName"):
-            props["mcp_dialog_schema"] = props["dialogSchemaName"]
+    source_val = _resolve_path(props, op.source) if op.source else None
 
-    elif vt == "DynamicPlanReceived":
-        steps = props.get("steps", [])
-        if isinstance(steps, list):
-            props["step_count"] = str(len(steps))
-        props["is_final_plan"] = str(props.get("isFinalPlan", False))
-        tool_defs = props.get("toolDefinitions", [])
-        if isinstance(tool_defs, list):
-            props["tool_definition_count"] = str(len(tool_defs))
+    if "if_isinstance" in cond:
+        type_name = cond["if_isinstance"]
+        # For conditions with source_root, check that root instead
+        check_path = cond.get("source_root", op.source)
+        check_val = _resolve_path(props, check_path) if check_path else source_val
+        expected = {"dict": dict, "list": list, "str": str}.get(type_name)
+        if expected and not isinstance(check_val, expected):
+            return False
 
-    elif vt == "DynamicPlanReceivedDebug":
-        if props.get("ask"):
-            props["user_ask"] = str(props["ask"])
-        if props.get("summary"):
-            props["plan_summary"] = str(props["summary"])
+    if cond.get("if_not_empty"):
+        # Check the parent_key if specified, otherwise check source value
+        parent_key = cond.get("parent_key")
+        if parent_key:
+            parent_val = _resolve_path(props, parent_key)
+            if not parent_val:
+                return False
+        elif not source_val:
+            return False
 
-    elif vt == "DynamicPlanFinished":
-        props["was_cancelled"] = str(props.get("wasCancelled", False))
+    if cond.get("if_not_none"):
+        if source_val is None:
+            return False
 
-    elif vt == "DialogTracingInfo":
-        actions = props.get("actions", [])
-        if isinstance(actions, list):
-            props["action_count"] = str(len(actions))
-            action_types = [a.get("actionType", "") for a in actions if isinstance(a, dict)]
-            props["action_types"] = ", ".join(action_types)
-            topic_ids = sorted(set(
-                a.get("topicId", "") for a in actions if isinstance(a, dict) and a.get("topicId")
-            ))
-            if topic_ids:
-                props["topic_ids"] = ", ".join(topic_ids)
-            exceptions = [
-                a.get("exception", "") for a in actions if isinstance(a, dict) and a.get("exception")
-            ]
-            if exceptions:
-                props["dialog_exceptions"] = "; ".join(exceptions)
+    if "prefix" in cond:
+        if not isinstance(source_val, str) or not source_val.startswith(cond["prefix"]):
+            return False
 
-    elif vt == "ErrorTraceData":
-        if props.get("errorCode"):
-            props["errorCode"] = str(props["errorCode"])
-        if props.get("errorMessage"):
-            props["errorMessage"] = str(props["errorMessage"])
-        if props.get("isUserError") is not None:
-            props["isUserError"] = str(props["isUserError"])
+    return True
 
-    elif vt == "ErrorCode":
-        if props.get("errorCode"):
-            props["errorCode"] = str(props["errorCode"])
-        if props.get("errorMessage"):
-            props["errorMessage"] = str(props["errorMessage"])
 
-    elif vt == "VariableAssignment":
-        if props.get("name"):
-            props["name"] = str(props["name"])
-        if props.get("value") is not None:
-            props["value"] = str(props["value"])
-        if props.get("type"):
-            props["type"] = str(props["type"])
+def _resolve_path(data: dict, path: str):
+    """Resolve a dot-notation path, supporting [*] for list iteration.
 
-    elif vt == "UnknownIntent":
-        if props.get("userQuery"):
-            props["userQuery"] = str(props["userQuery"])
+    Examples:
+        "observation.search_result.search_results" -> nested dict traversal
+        "actions[*].actionType" -> extract field from each list item
+        "toolsList[*].displayName|identifier" -> fallback key support
+    """
+    if not path:
+        return None
 
-    # CSAT/PRR/ImpliedSuccess enrichment
-    elif vt == "CSATSurveyResponse":
-        if props.get("score") is not None:
-            props["csat_score"] = str(props["score"])
-        if props.get("comment"):
-            props["csat_comment"] = str(props["comment"])
+    # Check for [*] — list extraction mode
+    if "[*]" in path:
+        before, after = path.split("[*]", 1)
+        list_val = _resolve_path(data, before) if before else data
+        if not isinstance(list_val, list):
+            return None
+        if not after or after == "":
+            return list_val
+        # Strip leading dot
+        field_path = after.lstrip(".")
+        if not field_path:
+            return list_val
 
-    elif vt == "PRRSurveyResponse":
-        if props.get("response") is not None:
-            props["prr_response"] = str(props["response"])
+        results = []
+        for item in list_val:
+            if not isinstance(item, dict):
+                continue
+            # Support fallback keys with |
+            if "|" in field_path:
+                keys = field_path.split("|")
+                for key in keys:
+                    val = item.get(key)
+                    if val:
+                        results.append(val)
+                        break
+                else:
+                    results.append("")
+            else:
+                val = _resolve_path(item, field_path) if "." in field_path else item.get(field_path)
+                if val is not None:
+                    results.append(val)
+        return results
 
-    elif vt == "ImpliedSuccess":
-        if props.get("dialogId"):
-            props["implied_success_dialog_id"] = str(props["dialogId"])
+    parts = path.split(".")
+    current = data
+    for part in parts:
+        if isinstance(current, dict):
+            current = current.get(part)
+        else:
+            return None
+        if current is None:
+            return None
+    return current
+
+
+def _op_extract_path(props: dict, op) -> None:
+    """Dot-path traversal, supports [*] for list-of-dicts."""
+    val = _resolve_path(props, op.source)
+    if val is not None:
+        props[op.target] = val if isinstance(val, str) else str(val)
+
+
+def _op_len(props: dict, op) -> None:
+    """Count list items, output as string."""
+    val = _resolve_path(props, op.source)
+    if isinstance(val, list):
+        props[op.target] = str(len(val))
+
+
+def _op_join(props: dict, op) -> None:
+    """Join list with separator, supports [*].field paths."""
+    sep = op.separator or ", "
+    val = _resolve_path(props, op.source)
+    if isinstance(val, list):
+        props[op.target] = sep.join(str(v) for v in val if v is not None)
+    elif isinstance(val, (str, int, float)):
+        props[op.target] = str(val)
+
+
+def _op_join_unique_sorted(props: dict, op) -> None:
+    """Dedupe + sort + join."""
+    sep = op.separator or ", "
+    val = _resolve_path(props, op.source)
+    if isinstance(val, list):
+        unique = sorted(set(str(v) for v in val if v))
+        if unique:
+            props[op.target] = sep.join(unique)
+
+
+def _op_json_dump(props: dict, op) -> None:
+    """json.dumps() a sub-object."""
+    val = _resolve_path(props, op.source)
+    if val is not None:
+        props[op.target] = json.dumps(val)
+
+
+def _op_str_coerce(props: dict, op) -> None:
+    """str(value) if not None. When source == target, coerce in-place."""
+    val = _resolve_path(props, op.source)
+    if val is not None:
+        props[op.target] = str(val)
+
+
+def _op_rename(props: dict, op) -> None:
+    """Copy value under new key."""
+    val = props.get(op.source)
+    if val:
+        props[op.target] = val
+
+
+def _op_conditional(props: dict, op) -> None:
+    """Apply only if condition met (prefix check + extract)."""
+    cond = op.condition
+    val = _resolve_path(props, op.source)
+    if not isinstance(val, str):
+        return
+
+    extract = cond.get("extract", "")
+    if extract == "split_last_colon":
+        props[op.target] = val.split(":")[-1]
+    else:
+        props[op.target] = val
+
+
+def _op_noop(props: dict, op) -> None:
+    """No-op for unknown op types."""
+    pass
+
+
+_ENRICHMENT_OPS = {
+    "extract_path": _op_extract_path,
+    "len": _op_len,
+    "join": _op_join,
+    "join_unique_sorted": _op_join_unique_sorted,
+    "json_dump": _op_json_dump,
+    "str_coerce": _op_str_coerce,
+    "rename": _op_rename,
+    "conditional": _op_conditional,
+}
 
 
 def _event_label(value_type: str) -> str:
