@@ -33,6 +33,7 @@ from config_loader import load_default_mapping
 from converter import apply_mapping, generate_default_mapping, to_otlp_json
 from models import (
     AttributeMapping,
+    EventMetadata,
     MappingSpecification,
     MCSEntity,
     OTELOperationName,
@@ -594,6 +595,78 @@ def generate_code_changes(
 
     # Filter out empty
     return {k: v for k, v in changes.items() if v}
+
+
+def generate_spec_changes(
+    applied: list[Finding],
+    needs_review: list[Finding],
+    current_spec: MappingSpecification,
+) -> MappingSpecification:
+    """Generate an updated MappingSpecification from findings.
+
+    For new_type: add EventMetadata + SpanMappingRule.
+    For new_attribute: add AttributeMapping to existing rule.
+    Returns: complete updated MappingSpecification.
+    """
+    spec = deepcopy(current_spec)
+
+    # Build rule lookup
+    rule_by_vt: dict[str, int] = {}
+    for idx, rule in enumerate(spec.rules):
+        if rule.mcs_value_type:
+            rule_by_vt[rule.mcs_value_type] = idx
+
+    # Build existing event metadata value_types
+    existing_meta_vts = {em.value_type for em in spec.event_metadata}
+
+    for finding in applied + needs_review:
+        if finding.category == "new_type":
+            vt = finding.value_type
+            if vt in rule_by_vt:
+                continue
+
+            # Add EventMetadata
+            if vt not in existing_meta_vts:
+                spec.event_metadata.append(EventMetadata(
+                    value_type=vt,
+                    tracked=True,
+                    label=vt,
+                    entity_type="trace_event",
+                ))
+                existing_meta_vts.add(vt)
+
+            # Add SpanMappingRule
+            rule_id = _to_snake_case(vt)
+            new_rule = SpanMappingRule(
+                rule_id=rule_id,
+                rule_name=vt,
+                mcs_entity_type="trace_event",
+                mcs_value_type=vt,
+                otel_operation_name=_suggest_otel_op(vt),
+                otel_span_kind=OTELSpanKind.INTERNAL,
+                span_name_template=rule_id.replace("_", "."),
+                parent_rule_id="user_turn",
+                attribute_mappings=_build_attribute_mappings(finding.sample_value),
+            )
+            spec.rules.append(new_rule)
+            rule_by_vt[vt] = len(spec.rules) - 1
+
+        elif finding.category == "new_attribute":
+            idx = rule_by_vt.get(finding.value_type)
+            if idx is None:
+                continue
+            rule = spec.rules[idx]
+            existing = {am.mcs_property for am in rule.attribute_mappings}
+            if finding.property_name in existing:
+                continue
+            rule.attribute_mappings.append(
+                AttributeMapping(
+                    mcs_property=finding.property_name,
+                    otel_attribute=f"copilot_studio.{finding.property_name}",
+                )
+            )
+
+    return spec
 
 
 def run_improvement_loop(

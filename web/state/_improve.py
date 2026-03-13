@@ -11,6 +11,7 @@ import reflex as rx
 from loguru import logger
 
 import improve as improve_mod
+from config_loader import DEFAULT_MAPPING_PATH, load_default_mapping, save_mapping_spec
 
 
 class ImproveMixin(rx.State, mixin=True):
@@ -24,6 +25,8 @@ class ImproveMixin(rx.State, mixin=True):
     code_export: dict[str, str] = {}
     # Original snippet lists for apply — preserves multi-line snippet boundaries
     _code_snippets: dict[str, list[str]] = {}
+    # Proposed spec from generate_spec_changes
+    _proposed_spec: dict = {}
 
     # Workflow step tracking
     improve_step: str = "configure"
@@ -187,11 +190,16 @@ class ImproveMixin(rx.State, mixin=True):
 
             self.pending_review = all_review
 
-            # Generate code export — keep snippet list for apply, flat string for display
+            # Generate spec-based changes
             review_findings = []
             for run in runs:
                 review_findings.extend(run.needs_review)
 
+            current_spec = load_default_mapping()
+            proposed = improve_mod.generate_spec_changes(all_applied, review_findings, current_spec)
+            self._proposed_spec = proposed.model_dump()
+
+            # Also generate code export for display
             code_changes = improve_mod.generate_code_changes(all_applied, review_findings)
             self._code_snippets = code_changes
             self.code_export = {k: "\n".join(v) for k, v in code_changes.items()}
@@ -252,44 +260,39 @@ class ImproveMixin(rx.State, mixin=True):
             self.pending_review.pop(idx)
 
     def preview_apply(self):
-        """Dry-run: apply changes to temp copies and generate a diff preview."""
-        if not self._code_snippets:
-            self.improve_progress = "No code changes to preview"
+        """Dry-run: generate a diff preview of the proposed spec changes."""
+        if not self._proposed_spec:
+            self.improve_progress = "No spec changes to preview"
             return
 
-        source_files = ["parsers.py", "converter.py", "otel_registry.py"]
         tmpdir = None
         try:
+            from models import MappingSpecification
+
             tmpdir = tempfile.mkdtemp(prefix="improve_preview_")
             tmp = Path(tmpdir)
 
-            # Copy source files to temp dir
-            for fname in source_files:
-                src = Path(fname)
-                if src.exists():
-                    shutil.copy2(src, tmp / fname)
+            # Write current spec
+            current_path = tmp / "current.json"
+            current_spec = load_default_mapping()
+            current_path.write_text(current_spec.model_dump_json(indent=2), encoding="utf-8")
 
-            # Apply changes to the temp copies
-            improve_mod.apply_to_source_files(self._code_snippets, base_dir=tmp)
+            # Write proposed spec
+            proposed_path = tmp / "proposed.json"
+            proposed = MappingSpecification.model_validate(self._proposed_spec)
+            proposed_path.write_text(proposed.model_dump_json(indent=2), encoding="utf-8")
 
-            # Generate unified diff between originals and modified copies
-            diff_parts: list[str] = []
-            for fname in source_files:
-                original = Path(fname)
-                modified = tmp / fname
-                if not original.exists() or not modified.exists():
-                    continue
-                result = subprocess.run(
-                    ["diff", "-u", "--label", f"a/{fname}", "--label", f"b/{fname}",
-                     str(original), str(modified)],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                if result.stdout:
-                    diff_parts.append(result.stdout)
-
-            self.apply_diff = "\n".join(diff_parts) if diff_parts else "No changes detected."
+            # Generate diff
+            result = subprocess.run(
+                ["diff", "-u",
+                 "--label", "a/config/default_mapping.json",
+                 "--label", "b/config/default_mapping.json",
+                 str(current_path), str(proposed_path)],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            self.apply_diff = result.stdout if result.stdout else "No changes detected."
             self.improve_step = "previewing"
 
         except Exception as e:
@@ -306,23 +309,22 @@ class ImproveMixin(rx.State, mixin=True):
         self.improve_step = "review"
 
     def confirm_apply(self):
-        """Actually apply changes to source files after previewing."""
-        if not self._code_snippets:
-            self.improve_progress = "No code changes to apply"
+        """Apply changes by saving updated MappingSpecification to JSON."""
+        if not self._proposed_spec:
+            self.improve_progress = "No spec changes to apply"
             return
 
-        results = improve_mod.apply_to_source_files(self._code_snippets)
-
-        self.apply_results = {k: v for k, v in results.items()}
-
-        success = sum(1 for v in results.values() if v)
-        total = len(results)
-        self.improve_progress = f"Applied to {success}/{total} files"
-        self.improve_step = "applied"
-
-        # Reload so next run_improvement_loop picks up the updated source files
-        if success > 0:
-            self._reload_improve()
+        try:
+            from models import MappingSpecification
+            proposed = MappingSpecification.model_validate(self._proposed_spec)
+            save_mapping_spec(proposed, DEFAULT_MAPPING_PATH)
+            self.apply_results = {"config/default_mapping.json": True}
+            self.improve_progress = "Applied spec changes to config/default_mapping.json"
+            self.improve_step = "applied"
+        except Exception as e:
+            logger.error("Failed to save spec: {}", e)
+            self.apply_results = {"config/default_mapping.json": False}
+            self.improve_progress = f"Failed to apply: {e}"
 
     async def rerun_verification(self):
         """Store current metrics and re-run to verify improvements."""
@@ -342,6 +344,7 @@ class ImproveMixin(rx.State, mixin=True):
         self.pending_review = []
         self.code_export = {}
         self._code_snippets = {}
+        self._proposed_spec = {}
         self.apply_results = {}
         self.apply_diff = ""
         self.pre_verify_coverage = 0.0

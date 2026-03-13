@@ -18,6 +18,7 @@ from improve import (
     classify_findings,
     compute_coverage,
     generate_code_changes,
+    generate_spec_changes,
     run_improvement_loop,
 )
 from models import AttributeMapping, MappingSpecification, SpanMappingRule
@@ -372,6 +373,62 @@ class TestGenerateCodeChanges:
         changes = generate_code_changes(findings, [])
         assert "converter.py" in changes
         assert "otel_registry.py" in changes
+
+
+# ---------------------------------------------------------------------------
+# TestGenerateSpecChanges
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateSpecChanges:
+    def test_adds_new_type_to_spec(self, default_spec):
+        """New type finding should add EventMetadata + SpanMappingRule."""
+        findings = [
+            Finding(
+                category="new_type",
+                auto_fixable=True,
+                value_type="BrandNewEvent",
+                file_count=5,
+                sample_value={"foo": "bar"},
+                code_snippet="SpanMappingRule(...)",
+            )
+        ]
+        result = generate_spec_changes(findings, [], default_spec)
+        assert len(result.rules) == len(default_spec.rules) + 1
+        assert len(result.event_metadata) == len(default_spec.event_metadata) + 1
+        new_meta = [em for em in result.event_metadata if em.value_type == "BrandNewEvent"]
+        assert len(new_meta) == 1
+        assert new_meta[0].tracked
+
+    def test_adds_attribute_to_existing_rule(self, default_spec):
+        """New attribute finding should add AttributeMapping."""
+        findings = [
+            Finding(
+                category="new_attribute",
+                auto_fixable=True,
+                value_type="ErrorTraceData",
+                property_name="newField",
+            )
+        ]
+        result = generate_spec_changes(findings, [], default_spec)
+        error_rule = next(r for r in result.rules if r.mcs_value_type == "ErrorTraceData")
+        assert any(am.mcs_property == "newField" for am in error_rule.attribute_mappings)
+
+    def test_idempotent(self, default_spec):
+        """Applying the same changes twice should not duplicate."""
+        findings = [
+            Finding(
+                category="new_type",
+                auto_fixable=True,
+                value_type="IdempotentEvent",
+                file_count=5,
+                sample_value={"p": "v"},
+                code_snippet="SpanMappingRule(...)",
+            )
+        ]
+        result1 = generate_spec_changes(findings, [], default_spec)
+        result2 = generate_spec_changes(findings, [], result1)
+        assert len(result1.rules) == len(result2.rules)
 
 
 # ---------------------------------------------------------------------------
