@@ -10,8 +10,9 @@ Converts Microsoft Copilot Studio conversation transcripts into OpenTelemetry-co
 - 104 OTEL attribute definitions across 10 categories
 - Full OTLP compliance (Client SpanKind for root, UNSET status codes)
 - Deep support for MCP, AI Builder, and Knowledge Retrieval tracing
-- Live span tree preview with OTLP JSON export
-- Self-learning improvement engine (`improve.py`) for auto-discovering mappings
+- Live span tree preview with clickable span inspector and OTLP JSON export
+- Attribute mappings visible on rule cards with per-rule match stats
+- Self-learning improvement engine (`improve.py`) with guided apply workflow and diff preview
 
 ## Quick Start
 
@@ -138,7 +139,7 @@ uv run python improve.py samples/
 ### CLI Flags
 
 - `-n` / `--max-iterations` — max improvement iterations (default: 5)
-- `--min-files` — min file count for auto-fix threshold (default: 3)
+- `--min-files` — min conversations for auto-fix threshold (default: 3, lower = more aggressive)
 - `-o` / `--output` — output directory for results (default: `improve_runs/`)
 - `-v` / `--verbose` — enable verbose logging
 
@@ -149,13 +150,13 @@ uv run reflex run
 # Navigate to http://localhost:3000/improve
 ```
 
-The dashboard provides:
-- **Controls** — set input directory, max iterations, min files threshold
-- **Iteration timeline** — cards showing coverage%, fill rate, auto-fixes per iteration
-- **Coverage chart** — line chart showing improvement across iterations
-- **Pending review** — findings needing human decision with accept/reject buttons
-- **Code export** — generated code changes per target file
-- **Apply to source** — writes accepted changes directly to `parsers.py`, `converter.py`, `otel_registry.py`
+The dashboard (accessible via the "Improve Mapping" navbar button) provides a guided 5-step workflow:
+
+1. **Configure** — set input directory, max iterations, min conversations threshold
+2. **Analyze** — iteration timeline, coverage chart, auto-applied vs needs-review summary
+3. **Review & Approve** — accept/reject each finding with code preview
+4. **Preview & Apply** — diff preview of exact source file changes before applying to `parsers.py`, `converter.py`, `otel_registry.py`
+5. **Verify** — re-run to confirm improvements with before/after comparison
 
 ### How It Works
 
@@ -192,4 +193,4 @@ Results are saved to `improve_runs/`:
 
 ## Tech Stack
 
-Python 3.14, UV, Reflex, Pydantic, React Flow
+Python 3.12, UV, Reflex, Pydantic, React Flow
