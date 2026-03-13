@@ -12,11 +12,40 @@ class PreviewMixin(rx.State, mixin=True):
     preview_total_spans: int = 0
     preview_duration_ms: float = 0.0
     selected_span_id: str = ""
+    # Per-rule match stats after preview
+    _rule_stats: list[dict] = []
+
+    @rx.var
+    def selected_span_detail(self) -> dict:
+        """Return full span dict for the selected span."""
+        if not self.selected_span_id:
+            return {}
+        for span in self.preview_spans:
+            if span.get("span_id") == self.selected_span_id:
+                return span
+        return {}
+
+    @rx.var
+    def selected_span_attrs(self) -> list[dict]:
+        """Attribute list for the selected span as [{key, value}]."""
+        detail = self.selected_span_detail
+        if not detail:
+            return []
+        attrs = detail.get("attributes", {})
+        return [
+            {"key": k, "value": str(v) if v else ""}
+            for k, v in sorted(attrs.items())
+        ]
+
+    @rx.var
+    def rule_stats(self) -> list[dict]:
+        return self._rule_stats
 
     def refresh_preview(self):
         """Apply mapping to entities, flatten tree, update state."""
         if not self.entities or not self.mapping_spec:
             self.preview_spans = []
+            self._rule_stats = []
             return
 
         try:
@@ -30,13 +59,31 @@ class PreviewMixin(rx.State, mixin=True):
 
             # Flatten tree with depth metadata
             self.preview_spans = self._flatten_tree(trace.root_span, 0)
+
+            # Compute per-rule match stats
+            self._rule_stats = self._compute_rule_stats(spec, self.preview_spans)
         except Exception as e:
             from loguru import logger
             logger.error("Failed to refresh preview: {}", e)
             self.preview_spans = []
+            self._rule_stats = []
 
     def _flatten_tree(self, span: OTELSpan, depth: int) -> list[dict]:
         """Recursively flatten span tree with depth metadata, including events."""
+        # Detect generating rule from gen_ai.operation.name attribute
+        rule_id = ""
+        attrs = span.attributes
+        op_name = attrs.get("gen_ai.operation.name", "")
+        if op_name and self.mapping_spec:
+            for rule in self.mapping_spec.get("rules", []):
+                if rule.get("otel_operation_name") == op_name:
+                    vt = rule.get("mcs_value_type", "")
+                    # Match by span name heuristic
+                    tpl = rule.get("span_name_template", "")
+                    if tpl and span.name.startswith(tpl.split("{")[0].strip()):
+                        rule_id = rule.get("rule_id", "")
+                        break
+
         result = [
             {
                 "span_id": span.span_id,
@@ -53,6 +100,7 @@ class PreviewMixin(rx.State, mixin=True):
                 "child_count": len(span.children),
                 "is_event": False,
                 "event_count": len(span.events),
+                "rule_id": rule_id,
             }
         ]
         # Show events on this span (indented one level deeper)
@@ -70,10 +118,60 @@ class PreviewMixin(rx.State, mixin=True):
                 "child_count": 0,
                 "is_event": True,
                 "event_count": 0,
+                "rule_id": "",
             })
         for child in span.children:
             result.extend(self._flatten_tree(child, depth + 1))
         return result
+
+    def _compute_rule_stats(
+        self, spec: MappingSpecification, flat_spans: list[dict]
+    ) -> list[dict]:
+        """Compute per-rule match count and attribute fill rate."""
+        stats: list[dict] = []
+        for rule in spec.rules:
+            rule_dict = rule.model_dump()
+            rule_id = rule.rule_id
+            op_name = rule.otel_operation_name.value if hasattr(rule.otel_operation_name, "value") else str(rule.otel_operation_name)
+            tpl_prefix = rule.span_name_template.split("{")[0].strip() if rule.span_name_template else ""
+
+            # Count matching spans
+            matched_spans = []
+            for s in flat_spans:
+                if s.get("is_event"):
+                    continue
+                s_op = s.get("attributes", {}).get("gen_ai.operation.name", "")
+                if s_op == op_name and tpl_prefix and s.get("name", "").startswith(tpl_prefix):
+                    matched_spans.append(s)
+
+            match_count = len(matched_spans)
+
+            # Compute attribute fill rate across matched spans
+            expected_attrs = len(rule.attribute_mappings)
+            if expected_attrs > 0 and matched_spans:
+                filled_total = 0
+                expected_total = 0
+                for s in matched_spans:
+                    attrs = s.get("attributes", {})
+                    for am in rule.attribute_mappings:
+                        expected_total += 1
+                        val = attrs.get(am.otel_attribute, "")
+                        if val:
+                            filled_total += 1
+                fill_rate = round(filled_total / expected_total * 100, 1) if expected_total > 0 else 0.0
+            else:
+                fill_rate = 0.0
+
+            vt = rule.mcs_value_type or rule.mcs_entity_type
+            stats.append({
+                "rule_id": rule_id,
+                "value_type": vt,
+                "otel_op": op_name,
+                "match_count": match_count,
+                "attr_count": expected_attrs,
+                "fill_rate": fill_rate,
+            })
+        return stats
 
     def select_span(self, span_id: str):
         """Select a span to show detail."""

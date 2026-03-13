@@ -188,10 +188,29 @@ class MappingMixin(rx.State, mixin=True):
 
     @rx.var(cache=True)
     def mapping_rules(self) -> list[dict]:
-        """Return the rules list from mapping_spec for foreach iteration."""
-        if self.mapping_spec and "rules" in self.mapping_spec:
-            return self.mapping_spec["rules"]
-        return []
+        """Return the rules list from mapping_spec for foreach iteration.
+
+        Adds attr_count and attr_summary fields for display since Reflex
+        cannot foreach over nested untyped dicts.
+        """
+        if not self.mapping_spec or "rules" not in self.mapping_spec:
+            return []
+        rules = []
+        for rule in self.mapping_spec["rules"]:
+            r = {**rule}
+            mappings = rule.get("attribute_mappings", [])
+            r["attr_count"] = len(mappings)
+            # Build compact summary: "mcs_prop → otel_attr" per line
+            lines = []
+            for am in mappings:
+                mcs = am.get("mcs_property", "")
+                otel = am.get("otel_attribute", "")
+                transform = am.get("transform", "direct")
+                suffix = f"  [{transform}]" if transform != "direct" else ""
+                lines.append(f"{mcs}  →  {otel}{suffix}")
+            r["attr_summary"] = "\n".join(lines) if lines else ""
+            rules.append(r)
+        return rules
 
     @rx.var(cache=True)
     def has_mapping(self) -> bool:

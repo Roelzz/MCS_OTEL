@@ -765,38 +765,35 @@ def _save_code_export(output_dir: Path, code_changes: dict[str, list[str]]) -> N
 # ---------------------------------------------------------------------------
 
 
-def apply_to_source_files(code_changes: dict[str, list[str]]) -> dict[str, bool]:
-    """Write approved code changes to actual source files.
+def apply_to_source_files(
+    code_changes: dict[str, list[str]],
+    base_dir: Path | None = None,
+) -> dict[str, bool]:
+    """Write approved code changes to source files.
 
-    For parsers.py:
-    - Insert new types into TRACKED_EVENT_TYPES set
+    Args:
+        code_changes: {filename: [code_snippet, ...]}
+        base_dir: Optional directory containing source files. Defaults to cwd.
 
-    For converter.py:
-    - Insert new SpanMappingRule into generate_default_mapping().rules list
-
-    For otel_registry.py:
-    - Insert new OTELAttribute into MCS_CUSTOM_ATTRIBUTES list
-
-    Uses pattern-based insertion points (find the closing bracket/brace, insert before it).
     Returns: {filename: success}
     """
     results: dict[str, bool] = {}
 
     if "parsers.py" in code_changes:
-        results["parsers.py"] = _insert_into_parsers(code_changes["parsers.py"])
+        results["parsers.py"] = _insert_into_parsers(code_changes["parsers.py"], base_dir)
 
     if "converter.py" in code_changes:
-        results["converter.py"] = _insert_into_converter(code_changes["converter.py"])
+        results["converter.py"] = _insert_into_converter(code_changes["converter.py"], base_dir)
 
     if "otel_registry.py" in code_changes:
-        results["otel_registry.py"] = _insert_into_registry(code_changes["otel_registry.py"])
+        results["otel_registry.py"] = _insert_into_registry(code_changes["otel_registry.py"], base_dir)
 
     return results
 
 
-def _insert_into_parsers(snippets: list[str]) -> bool:
+def _insert_into_parsers(snippets: list[str], base_dir: Path | None = None) -> bool:
     """Insert new types into TRACKED_EVENT_TYPES in parsers.py."""
-    path = Path("parsers.py")
+    path = (base_dir / "parsers.py") if base_dir else Path("parsers.py")
     try:
         content = path.read_text(encoding="utf-8")
 
@@ -841,14 +838,12 @@ def _insert_into_parsers(snippets: list[str]) -> bool:
         return False
 
 
-def _insert_into_converter(snippets: list[str]) -> bool:
-    """Insert new SpanMappingRule entries into converter.py generate_default_mapping()."""
-    path = Path("converter.py")
+def _insert_into_converter(snippets: list[str], base_dir: Path | None = None) -> bool:
+    """Insert new SpanMappingRule and AttributeMapping entries into converter.py."""
+    path = (base_dir / "converter.py") if base_dir else Path("converter.py")
     try:
         content = path.read_text(encoding="utf-8")
 
-        # Find the end of generate_default_mapping's rules list
-        # Look for the last "]," before the closing ")" of the function
         marker = "def generate_default_mapping()"
         func_start = content.find(marker)
         if func_start == -1:
@@ -861,7 +856,6 @@ def _insert_into_converter(snippets: list[str]) -> bool:
             logger.error("Could not find rules=[ in generate_default_mapping")
             return False
 
-        # Find matching ] — track bracket depth
         bracket_depth = 0
         idx = rules_start + len("rules=[")
         while idx < len(content):
@@ -877,26 +871,88 @@ def _insert_into_converter(snippets: list[str]) -> bool:
             logger.error("Could not find closing ] for rules list")
             return False
 
-        # Filter to only SpanMappingRule snippets
+        rules_end_idx = idx
+        modified = False
+
+        # 1. Insert new SpanMappingRule entries at end of rules list
         rule_snippets = [s for s in snippets if "SpanMappingRule(" in s]
+        if rule_snippets:
+            insert_text = "\n" + "\n".join(
+                f"            {line}"
+                for snippet in rule_snippets
+                for line in snippet.split("\n")
+            ) + "\n"
+            content = content[:rules_end_idx] + insert_text + content[rules_end_idx:]
+            modified = True
 
-        if not rule_snippets:
-            return True
+        # 2. Insert new AttributeMapping entries into existing rules
+        attr_snippets = [s for s in snippets if "# Add to " in s and "AttributeMapping(" in s]
+        for snippet in attr_snippets:
+            # Extract value_type from "# Add to <ValueType> rule:\n..."
+            first_line = snippet.split("\n")[0]
+            match = re.search(r"# Add to (\S+) rule:", first_line)
+            if not match:
+                logger.warning("Could not parse value_type from: {}", first_line)
+                continue
 
-        insert_text = "\n" + "\n".join(f"            {line}" for snippet in rule_snippets for line in snippet.split("\n")) + "\n"
-        content = content[:idx] + insert_text + content[idx:]
+            value_type = match.group(1)
+            attr_code = "\n".join(snippet.split("\n")[1:]).strip()
 
-        path.write_text(content, encoding="utf-8")
-        logger.info("Inserted {} rules into converter.py", len(rule_snippets))
+            # Check if this AttributeMapping already exists
+            prop_match = re.search(r'mcs_property="([^"]+)"', attr_code)
+            if prop_match and f'mcs_property="{prop_match.group(1)}"' in content:
+                logger.debug("AttributeMapping for {} already exists, skipping", prop_match.group(1))
+                continue
+
+            # Find the rule with this mcs_value_type
+            vt_pattern = f'mcs_value_type="{value_type}"'
+            vt_pos = content.find(vt_pattern)
+            if vt_pos == -1:
+                logger.warning("Could not find rule with mcs_value_type={}", value_type)
+                continue
+
+            # Find attribute_mappings=[ for this rule
+            am_start = content.find("attribute_mappings=[", vt_pos)
+            if am_start == -1:
+                logger.warning("Could not find attribute_mappings for {}", value_type)
+                continue
+
+            # Find the closing ] of attribute_mappings — track bracket depth
+            bd = 0
+            ai = am_start + len("attribute_mappings=[")
+            while ai < len(content):
+                if content[ai] == "[":
+                    bd += 1
+                elif content[ai] == "]":
+                    if bd == 0:
+                        break
+                    bd -= 1
+                ai += 1
+
+            if ai >= len(content):
+                logger.warning("Could not find closing ] for attribute_mappings of {}", value_type)
+                continue
+
+            # Insert the new AttributeMapping before the closing ]
+            indented = "\n".join(f"                    {line}" for line in attr_code.split("\n"))
+            insert = "\n" + indented + "\n"
+            content = content[:ai] + insert + content[ai:]
+            modified = True
+            logger.info("Inserted AttributeMapping for {}.{}", value_type, prop_match.group(1) if prop_match else "?")
+
+        if modified:
+            path.write_text(content, encoding="utf-8")
+            logger.info("Updated converter.py")
+
         return True
     except Exception as e:
         logger.error("Failed to update converter.py: {}", e)
         return False
 
 
-def _insert_into_registry(snippets: list[str]) -> bool:
+def _insert_into_registry(snippets: list[str], base_dir: Path | None = None) -> bool:
     """Insert new OTELAttribute entries into otel_registry.py."""
-    path = Path("otel_registry.py")
+    path = (base_dir / "otel_registry.py") if base_dir else Path("otel_registry.py")
     try:
         content = path.read_text(encoding="utf-8")
 

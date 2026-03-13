@@ -100,6 +100,136 @@ def _span_row(span: rx.Var[dict]) -> rx.Component:
     )
 
 
+def _attr_row(attr: rx.Var[dict]) -> rx.Component:
+    """Single attribute key-value row."""
+    key = attr["key"].to(str)
+    value = attr["value"].to(str)
+    return rx.hstack(
+        rx.text(
+            key,
+            size="1",
+            weight="medium",
+            font_family="JetBrains Mono, monospace",
+            color="var(--blue-11)",
+            min_width="200px",
+        ),
+        rx.cond(
+            value != "",
+            rx.text(
+                value,
+                size="1",
+                font_family="JetBrains Mono, monospace",
+                flex="1",
+                style={"word_break": "break_all"},
+            ),
+            rx.text(
+                "(empty)",
+                size="1",
+                color="var(--gray-8)",
+                font_style="italic",
+            ),
+        ),
+        spacing="2",
+        width="100%",
+        padding_y="2px",
+        padding_x="0.5em",
+        border_bottom="1px solid var(--gray-a3)",
+    )
+
+
+def _span_detail() -> rx.Component:
+    """Detail panel for the selected span."""
+    detail = State.selected_span_detail
+    return rx.cond(
+        State.selected_span_id != "",
+        rx.card(
+            rx.vstack(
+                rx.hstack(
+                    rx.icon("info", size=16, color="var(--blue-9)"),
+                    rx.heading(detail["name"].to(str), size="3"),
+                    rx.spacer(),
+                    rx.badge(
+                        detail["kind"].to(str),
+                        color_scheme="blue",
+                        size="1",
+                    ),
+                    rx.cond(
+                        detail["rule_id"].to(str) != "",
+                        rx.badge(
+                            detail["rule_id"].to(str),
+                            color_scheme="purple",
+                            size="1",
+                            variant="outline",
+                        ),
+                    ),
+                    spacing="2",
+                    align="center",
+                    width="100%",
+                ),
+                # Timing info
+                rx.hstack(
+                    rx.badge(
+                        detail["duration_ms"].to(str),
+                        " ms",
+                        color_scheme="green",
+                        size="1",
+                    ),
+                    rx.text(
+                        "Status: ",
+                        detail["status"].to(str),
+                        size="1",
+                        color="var(--gray-9)",
+                    ),
+                    rx.cond(
+                        detail["event_count"].to(int) > 0,
+                        rx.badge(
+                            detail["event_count"].to(str),
+                            " events",
+                            color_scheme="orange",
+                            size="1",
+                        ),
+                    ),
+                    spacing="2",
+                ),
+                # Attributes table
+                rx.cond(
+                    State.selected_span_attrs.length() > 0,
+                    rx.vstack(
+                        rx.hstack(
+                            rx.text("Attributes", size="2", weight="bold"),
+                            rx.badge(
+                                State.selected_span_attrs.length().to(str),
+                                color_scheme="gray",
+                                size="1",
+                            ),
+                            spacing="2",
+                            align="center",
+                        ),
+                        rx.box(
+                            rx.foreach(State.selected_span_attrs, _attr_row),
+                            width="100%",
+                            border="1px solid var(--gray-a4)",
+                            border_radius="var(--radius-2)",
+                            max_height="300px",
+                            overflow_y="auto",
+                        ),
+                        spacing="2",
+                        width="100%",
+                    ),
+                    rx.text(
+                        "No attributes on this span.",
+                        size="1",
+                        color="var(--gray-8)",
+                    ),
+                ),
+                spacing="3",
+                width="100%",
+            ),
+            width="100%",
+        ),
+    )
+
+
 def span_tree() -> rx.Component:
     """Span tree + timeline panel."""
     return rx.vstack(
@@ -155,6 +285,8 @@ def span_tree() -> rx.Component:
                 color="var(--gray-9)",
             ),
         ),
+        # Span detail panel
+        _span_detail(),
         spacing="3",
         width="100%",
         padding="1em",
