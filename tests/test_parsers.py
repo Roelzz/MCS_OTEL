@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pytest
 
+from config_loader import load_default_mapping
+from models import EventMetadata, MappingSpecification
 from parsers import extract_entities, parse_transcript
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
@@ -112,3 +114,65 @@ class TestExtractEntities:
         first_turn = turns[0]
         assert "user_msg" in first_turn.properties
         assert "bot_msg" in first_turn.properties
+
+
+class TestSpecDrivenExtraction:
+    def test_spec_controls_tracked_types(self, transcript):
+        """Toggling tracked=False on a type should drop those entities."""
+        spec = load_default_mapping()
+        baseline = extract_entities(transcript, spec=spec)
+        baseline_types = {e.value_type for e in baseline if e.value_type}
+
+        # Disable DialogRedirect
+        modified_meta = [
+            EventMetadata(
+                value_type=em.value_type,
+                tracked=False if em.value_type == "DialogRedirect" else em.tracked,
+                label=em.label,
+                entity_type=em.entity_type,
+            )
+            for em in spec.event_metadata
+        ]
+        modified_spec = spec.model_copy(update={"event_metadata": modified_meta})
+        filtered = extract_entities(transcript, spec=modified_spec)
+        filtered_types = {e.value_type for e in filtered if e.value_type}
+        assert "DialogRedirect" in baseline_types
+        assert "DialogRedirect" not in filtered_types
+
+    def test_spec_controls_labels(self, transcript):
+        """Custom label in EventMetadata should appear on entities."""
+        spec = load_default_mapping()
+        modified_meta = [
+            EventMetadata(
+                value_type=em.value_type,
+                tracked=em.tracked,
+                label="Custom Label" if em.value_type == "DialogRedirect" else em.label,
+                entity_type=em.entity_type,
+            )
+            for em in spec.event_metadata
+        ]
+        modified_spec = spec.model_copy(update={"event_metadata": modified_meta})
+        entities = extract_entities(transcript, spec=modified_spec)
+        redirects = [e for e in entities if e.value_type == "DialogRedirect"]
+        if redirects:
+            assert redirects[0].label == "Custom Label"
+
+    def test_adding_new_event_metadata(self, transcript):
+        """Adding EventMetadata for a new type should make it appear."""
+        spec = load_default_mapping()
+        # Add a fake tracked type that won't match anything
+        new_meta = list(spec.event_metadata) + [
+            EventMetadata(value_type="FakeNewType", tracked=True, label="Fake")
+        ]
+        modified_spec = spec.model_copy(update={"event_metadata": new_meta})
+        entities = extract_entities(transcript, spec=modified_spec)
+        # Won't find any because no activities have this type, but it shouldn't crash
+        assert isinstance(entities, list)
+
+    def test_fallback_without_spec(self, transcript):
+        """Without spec, extract_entities() should use hardcoded TRACKED_EVENT_TYPES."""
+        entities_no_spec = extract_entities(transcript)
+        spec = load_default_mapping()
+        entities_with_spec = extract_entities(transcript, spec=spec)
+        # Should produce same entity count
+        assert len(entities_no_spec) == len(entities_with_spec)

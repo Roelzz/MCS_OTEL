@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import yaml
 from loguru import logger
 
-from models import MCSActivity, MCSEntity, MCSTranscript, parse_activity_value
+from models import MCSActivity, MCSEntity, MCSTranscript, MappingSpecification, parse_activity_value
 
 logger.remove()
 logger.add(
@@ -349,9 +349,19 @@ def _extract_turns(activities: list[MCSActivity]) -> list[dict]:
 
 
 def extract_entities(
-    transcript: MCSTranscript, bot_content: dict | None = None
+    transcript: MCSTranscript,
+    bot_content: dict | None = None,
+    spec: MappingSpecification | None = None,
 ) -> list[MCSEntity]:
     """Flatten parsed transcript into entity list for the mapping UI."""
+    # Build tracked set and label map from spec if provided, else fall back to hardcoded
+    if spec and spec.event_metadata:
+        tracked_types = {em.value_type for em in spec.event_metadata if em.tracked}
+        label_map = {em.value_type: em.label for em in spec.event_metadata if em.label}
+    else:
+        tracked_types = TRACKED_EVENT_TYPES
+        label_map = None
+
     entities: list[MCSEntity] = []
 
     # 1. Session root — always create, synthesize from metadata if SessionInfo absent
@@ -406,13 +416,13 @@ def extract_entities(
     trace_counters: dict[str, int] = {}
     for a in transcript.activities:
         vt = a.value_type
-        if not vt or vt not in TRACKED_EVENT_TYPES:
+        if not vt or vt not in tracked_types:
             continue
 
         count = trace_counters.get(vt, 0)
         trace_counters[vt] = count + 1
 
-        label = _event_label(vt)
+        label = label_map[vt] if label_map and vt in label_map else _event_label(vt)
         props = dict(a.value)
         props["timestamp"] = a.timestamp
 
