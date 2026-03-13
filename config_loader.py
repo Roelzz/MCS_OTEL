@@ -17,6 +17,7 @@ logger.add(
 
 CONFIG_DIR = Path(__file__).parent / "config"
 DEFAULT_MAPPING_PATH = CONFIG_DIR / "default_mapping.json"
+OTEL_ATTRIBUTES_PATH = CONFIG_DIR / "otel_attributes.json"
 
 
 def load_mapping_spec(path: str | Path) -> MappingSpecification:
@@ -56,3 +57,15 @@ def save_mapping_spec(spec: MappingSpecification, path: str | Path) -> None:
     content = spec.model_dump_json(indent=2)
     path.write_text(content, encoding="utf-8")
     logger.info("Saved mapping spec to {}: {} rules", path, len(spec.rules))
+
+
+def load_otel_attributes(path: str | Path | None = None) -> list:
+    """Load OTEL attribute definitions from JSON file."""
+    from otel_registry import OTELAttribute
+
+    path = Path(path) if path else OTEL_ATTRIBUTES_PATH
+    content = path.read_text(encoding="utf-8")
+    data = json.loads(content)
+    attributes = [OTELAttribute.model_validate(item) for item in data]
+    logger.info("Loaded {} OTEL attributes from {}", len(attributes), path.name)
+    return attributes

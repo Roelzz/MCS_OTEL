@@ -1,0 +1,723 @@
+[
+  {
+    "key": "gen_ai.operation.name",
+    "value_type": "string",
+    "description": "Name of the GenAI operation (chat, invoke_agent, etc.)",
+    "requirement_level": "required",
+    "example_value": "chat"
+  },
+  {
+    "key": "gen_ai.system",
+    "value_type": "string",
+    "description": "GenAI system provider identifier",
+    "requirement_level": "required",
+    "example_value": "copilot_studio"
+  },
+  {
+    "key": "gen_ai.provider.name",
+    "value_type": "string",
+    "description": "Human-readable name of the GenAI provider",
+    "requirement_level": "recommended",
+    "example_value": "Microsoft Copilot Studio"
+  },
+  {
+    "key": "gen_ai.agent.name",
+    "value_type": "string",
+    "description": "Name of the agent handling the request",
+    "requirement_level": "recommended",
+    "example_value": "Customer Support Bot"
+  },
+  {
+    "key": "gen_ai.agent.id",
+    "value_type": "string",
+    "description": "Unique identifier of the agent",
+    "requirement_level": "recommended",
+    "example_value": "bot-abc123"
+  },
+  {
+    "key": "gen_ai.conversation.id",
+    "value_type": "string",
+    "description": "Unique identifier for the conversation session",
+    "requirement_level": "recommended",
+    "example_value": "conv-xyz789"
+  },
+  {
+    "key": "gen_ai.usage.input_tokens",
+    "value_type": "int",
+    "description": "Number of input tokens consumed",
+    "requirement_level": "recommended",
+    "example_value": "150"
+  },
+  {
+    "key": "gen_ai.usage.output_tokens",
+    "value_type": "int",
+    "description": "Number of output tokens generated",
+    "requirement_level": "recommended",
+    "example_value": "320"
+  },
+  {
+    "key": "gen_ai.tool.name",
+    "value_type": "string",
+    "description": "Name of the tool being invoked",
+    "requirement_level": "recommended",
+    "example_value": "SearchKnowledgeBase"
+  },
+  {
+    "key": "gen_ai.tool.type",
+    "value_type": "string",
+    "description": "Type of tool (function, plugin, connector)",
+    "requirement_level": "recommended",
+    "example_value": "function"
+  },
+  {
+    "key": "gen_ai.tool.call.id",
+    "value_type": "string",
+    "description": "Unique identifier for the tool call",
+    "requirement_level": "recommended",
+    "example_value": "call-001"
+  },
+  {
+    "key": "gen_ai.tool.call.arguments",
+    "value_type": "string",
+    "description": "JSON-encoded arguments passed to the tool",
+    "requirement_level": "recommended",
+    "example_value": "{\"query\": \"refund policy\"}"
+  },
+  {
+    "key": "gen_ai.tool.call.result",
+    "value_type": "string",
+    "description": "JSON-encoded result returned by the tool",
+    "requirement_level": "recommended",
+    "example_value": "{\"documents\": [...]}"
+  },
+  {
+    "key": "gen_ai.input.messages",
+    "value_type": "string",
+    "description": "JSON-encoded input messages sent to the model",
+    "requirement_level": "recommended",
+    "example_value": "[{\"role\": \"user\", \"content\": \"Hello\"}]"
+  },
+  {
+    "key": "gen_ai.output.messages",
+    "value_type": "string",
+    "description": "JSON-encoded output messages from the model",
+    "requirement_level": "recommended",
+    "example_value": "[{\"role\": \"assistant\", \"content\": \"Hi there!\"}]"
+  },
+  {
+    "key": "gen_ai.system_instructions",
+    "value_type": "string",
+    "description": "System prompt or instructions provided to the model",
+    "requirement_level": "recommended",
+    "example_value": "You are a helpful customer support agent."
+  },
+  {
+    "key": "gen_ai.request.model",
+    "value_type": "string",
+    "description": "Model identifier used for the request",
+    "requirement_level": "recommended",
+    "example_value": "gpt-4o"
+  },
+  {
+    "key": "gen_ai.request.temperature",
+    "value_type": "float",
+    "description": "Temperature parameter for generation",
+    "requirement_level": "recommended",
+    "example_value": "0.7"
+  },
+  {
+    "key": "gen_ai.request.max_tokens",
+    "value_type": "int",
+    "description": "Maximum number of tokens to generate",
+    "requirement_level": "recommended",
+    "example_value": "1024"
+  },
+  {
+    "key": "gen_ai.response.id",
+    "value_type": "string",
+    "description": "Unique identifier for the model response",
+    "requirement_level": "recommended",
+    "example_value": "resp-abc123"
+  },
+  {
+    "key": "gen_ai.response.finish_reasons",
+    "value_type": "string[]",
+    "description": "Reasons the model stopped generating",
+    "requirement_level": "recommended",
+    "example_value": "[\"stop\"]"
+  },
+  {
+    "key": "mcs.channel",
+    "value_type": "string",
+    "description": "Communication channel (e.g. pva-studio, msteams)",
+    "requirement_level": "recommended",
+    "example_value": "pva-studio"
+  },
+  {
+    "key": "mcs.environment",
+    "value_type": "string",
+    "description": "Deployment environment (design or production)",
+    "requirement_level": "recommended",
+    "example_value": "design"
+  },
+  {
+    "key": "mcs.tenant",
+    "value_type": "string",
+    "description": "Azure AD tenant identifier",
+    "requirement_level": "recommended",
+    "example_value": "abc-def-123"
+  },
+  {
+    "key": "mcs.turn.index",
+    "value_type": "string",
+    "description": "Turn index within the conversation",
+    "requirement_level": "recommended",
+    "example_value": "0"
+  },
+  {
+    "key": "mcs.topic.name",
+    "value_type": "string",
+    "description": "Topic or dialog that was triggered",
+    "requirement_level": "recommended",
+    "example_value": "Greeting"
+  },
+  {
+    "key": "mcs.user.message_preview",
+    "value_type": "string",
+    "description": "Plain text preview of the user message",
+    "requirement_level": "recommended",
+    "example_value": "I need help with expenses"
+  },
+  {
+    "key": "mcs.assistant.message_preview",
+    "value_type": "string",
+    "description": "Plain text preview of the assistant response",
+    "requirement_level": "recommended",
+    "example_value": "I can help with that!"
+  },
+  {
+    "key": "enduser.timezone",
+    "value_type": "string",
+    "description": "User's local timezone from message activity",
+    "requirement_level": "recommended",
+    "example_value": "Europe/Amsterdam"
+  },
+  {
+    "key": "enduser.locale",
+    "value_type": "string",
+    "description": "User's locale from message activity",
+    "requirement_level": "recommended",
+    "example_value": "en-US"
+  },
+  {
+    "key": "enduser.id",
+    "value_type": "string",
+    "description": "User's AAD object ID",
+    "requirement_level": "recommended",
+    "example_value": "6173da01-d84e-4dbd-beef-12fadce152f1"
+  },
+  {
+    "key": "gen_ai.data_source.id",
+    "value_type": "string",
+    "description": "Identifier of the data source queried",
+    "requirement_level": "recommended",
+    "example_value": "kb-001"
+  },
+  {
+    "key": "gen_ai.retrieval.query.text",
+    "value_type": "string",
+    "description": "The search query text sent to the retrieval system",
+    "requirement_level": "recommended",
+    "example_value": "expense policy for meals"
+  },
+  {
+    "key": "gen_ai.retrieval.documents",
+    "value_type": "string",
+    "description": "JSON-encoded list of retrieved documents",
+    "requirement_level": "recommended",
+    "example_value": "[{\"name\": \"policy.txt\"}]"
+  },
+  {
+    "key": "mcs.knowledge.sources",
+    "value_type": "string",
+    "description": "Comma-separated list of knowledge sources queried",
+    "requirement_level": "recommended",
+    "example_value": "file.policy.txt, file.team.txt"
+  },
+  {
+    "key": "mcs.retrieval.document_count",
+    "value_type": "string",
+    "description": "Number of documents retrieved",
+    "requirement_level": "recommended",
+    "example_value": "3"
+  },
+  {
+    "key": "mcs.retrieval.documents",
+    "value_type": "string",
+    "description": "Comma-separated names of retrieved documents",
+    "requirement_level": "recommended",
+    "example_value": "policy.txt, team.txt"
+  },
+  {
+    "key": "mcs.retrieval.source_type",
+    "value_type": "string",
+    "description": "Types of retrieval sources used",
+    "requirement_level": "recommended",
+    "example_value": "DataverseSearch"
+  },
+  {
+    "key": "mcs.retrieval.errors",
+    "value_type": "string",
+    "description": "JSON-encoded search errors if any",
+    "requirement_level": "recommended",
+    "example_value": "[]"
+  },
+  {
+    "key": "mcs.knowledge.output_sources",
+    "value_type": "string",
+    "description": "Knowledge sources that produced output",
+    "requirement_level": "recommended",
+    "example_value": "file.policy.txt"
+  },
+  {
+    "key": "mcs.session.outcome",
+    "value_type": "string",
+    "description": "Outcome of the session (resolved, escalated, abandoned)",
+    "requirement_level": "recommended",
+    "example_value": "resolved"
+  },
+  {
+    "key": "mcs.action.type",
+    "value_type": "string",
+    "description": "Type of action executed within a topic",
+    "requirement_level": "recommended",
+    "example_value": "plugin"
+  },
+  {
+    "key": "mcs.plan.id",
+    "value_type": "string",
+    "description": "Identifier for the orchestrator plan being executed",
+    "requirement_level": "recommended",
+    "example_value": "plan-001"
+  },
+  {
+    "key": "mcs.plan.was_cancelled",
+    "value_type": "string",
+    "description": "Whether the plan was cancelled before completion",
+    "requirement_level": "recommended",
+    "example_value": "False"
+  },
+  {
+    "key": "mcs.step.type",
+    "value_type": "string",
+    "description": "Type of step within an orchestrator plan",
+    "requirement_level": "recommended",
+    "example_value": "action"
+  },
+  {
+    "key": "mcs.tool.step_state",
+    "value_type": "string",
+    "description": "State of plan step execution (completed, failed)",
+    "requirement_level": "recommended",
+    "example_value": "completed"
+  },
+  {
+    "key": "mcs.orchestrator.thought",
+    "value_type": "string",
+    "description": "Orchestrator reasoning or chain-of-thought content",
+    "requirement_level": "recommended",
+    "example_value": "User is asking about refund policy, searching knowledge base."
+  },
+  {
+    "key": "mcs.tool.execution_time",
+    "value_type": "string",
+    "description": "Execution time of the step",
+    "requirement_level": "recommended",
+    "example_value": "00:00:01.234"
+  },
+  {
+    "key": "mcs.search.keywords",
+    "value_type": "string",
+    "description": "Search keywords used in knowledge retrieval",
+    "requirement_level": "recommended",
+    "example_value": "expense policy, meals"
+  },
+  {
+    "key": "mcs.tool.is_error",
+    "value_type": "string",
+    "description": "Whether the tool call returned an error",
+    "requirement_level": "recommended",
+    "example_value": "False"
+  },
+  {
+    "key": "mcs.connector.result_url",
+    "value_type": "string",
+    "description": "URL returned by a connector action",
+    "requirement_level": "recommended",
+    "example_value": "https://teams.microsoft.com/..."
+  },
+  {
+    "key": "mcs.hitl.responder_id",
+    "value_type": "string",
+    "description": "AAD object ID of the human-in-the-loop responder",
+    "requirement_level": "recommended",
+    "example_value": "6173da01-..."
+  },
+  {
+    "key": "mcs.mcp.tool_name",
+    "value_type": "string",
+    "description": "Name of the MCP tool being called",
+    "requirement_level": "recommended",
+    "example_value": "create_new_expense_report"
+  },
+  {
+    "key": "mcs.mcp.tool_count",
+    "value_type": "string",
+    "description": "Number of tools available on the MCP server",
+    "requirement_level": "recommended",
+    "example_value": "8"
+  },
+  {
+    "key": "mcs.mcp.tool_names",
+    "value_type": "string",
+    "description": "Comma-separated names of available MCP tools",
+    "requirement_level": "recommended",
+    "example_value": "list_reports, create_report"
+  },
+  {
+    "key": "mcs.plan.step_count",
+    "value_type": "string",
+    "description": "Number of steps in orchestrator plan",
+    "requirement_level": "recommended",
+    "example_value": "3"
+  },
+  {
+    "key": "mcs.plan.is_final",
+    "value_type": "string",
+    "description": "Whether this is the final plan iteration",
+    "requirement_level": "recommended",
+    "example_value": "True"
+  },
+  {
+    "key": "mcs.orchestrator.user_ask",
+    "value_type": "string",
+    "description": "User query as interpreted by orchestrator",
+    "requirement_level": "recommended",
+    "example_value": "trigger topic"
+  },
+  {
+    "key": "mcs.orchestrator.plan_summary",
+    "value_type": "string",
+    "description": "Orchestrator's summary of the plan",
+    "requirement_level": "recommended",
+    "example_value": "Search knowledge base for policy"
+  },
+  {
+    "key": "mcs.dialog.action_types",
+    "value_type": "string",
+    "description": "Comma-separated dialog action types",
+    "requirement_level": "recommended",
+    "example_value": "SendActivity, SetVariable"
+  },
+  {
+    "key": "mcs.dialog.topic_ids",
+    "value_type": "string",
+    "description": "Topic IDs referenced in dialog actions",
+    "requirement_level": "recommended",
+    "example_value": "copilots_header.topic.ConversationStart"
+  },
+  {
+    "key": "mcs.dialog.exceptions",
+    "value_type": "string",
+    "description": "Exceptions from dialog execution",
+    "requirement_level": "recommended",
+    "example_value": "Error in dialog step"
+  },
+  {
+    "key": "mcs.dialog.action_count",
+    "value_type": "string",
+    "description": "Number of dialog actions executed",
+    "requirement_level": "recommended",
+    "example_value": "3"
+  },
+  {
+    "key": "mcs.mcp.server_name",
+    "value_type": "string",
+    "description": "Name of the MCP server",
+    "requirement_level": "recommended",
+    "example_value": "Zava Expense Assistant"
+  },
+  {
+    "key": "mcs.mcp.server_version",
+    "value_type": "string",
+    "description": "Version of the MCP server",
+    "requirement_level": "recommended",
+    "example_value": "2.13.1"
+  },
+  {
+    "key": "mcs.mcp.protocol_version",
+    "value_type": "string",
+    "description": "MCP protocol version used",
+    "requirement_level": "recommended",
+    "example_value": "2024-11-05"
+  },
+  {
+    "key": "mcs.mcp.session_id",
+    "value_type": "string",
+    "description": "MCP session identifier",
+    "requirement_level": "recommended",
+    "example_value": "56823f4f1af746e284a5221da035e332"
+  },
+  {
+    "key": "mcs.mcp.capabilities",
+    "value_type": "string",
+    "description": "JSON-encoded MCP server capabilities",
+    "requirement_level": "recommended",
+    "example_value": "{\"tools\": {\"listChanged\": true}}"
+  },
+  {
+    "key": "mcs.mcp.initialization_result",
+    "value_type": "string",
+    "description": "Result details of MCP server initialization",
+    "requirement_level": "recommended",
+    "example_value": "Success"
+  },
+  {
+    "key": "mcs.mcp.dialog_schema",
+    "value_type": "string",
+    "description": "Dialog schema name for MCP server",
+    "requirement_level": "recommended",
+    "example_value": "rrs_agent_orchestrator.topic.ZavaExpenseMCP"
+  },
+  {
+    "key": "mcs.orchestrator.think_time_ms",
+    "value_type": "string",
+    "description": "Idle time in ms between plan finished and next plan received",
+    "requirement_level": "recommended",
+    "example_value": "1500"
+  },
+  {
+    "key": "mcs.plan.used_outputs",
+    "value_type": "string",
+    "description": "JSON-encoded outputs passed between plan steps",
+    "requirement_level": "recommended",
+    "example_value": "{\"key\": \"value\"}"
+  },
+  {
+    "key": "mcs.plan.tool_definition_count",
+    "value_type": "string",
+    "description": "Number of tool definitions in the plan",
+    "requirement_level": "recommended",
+    "example_value": "3"
+  },
+  {
+    "key": "mcs.auth.mode",
+    "value_type": "string",
+    "description": "Bot authentication mode",
+    "requirement_level": "recommended",
+    "example_value": "Integrated"
+  },
+  {
+    "key": "mcs.knowledge.configured_sources",
+    "value_type": "string",
+    "description": "JSON-encoded list of configured knowledge sources from botContent",
+    "requirement_level": "recommended",
+    "example_value": "[\"Expense policy\", \"Team Members\"]"
+  },
+  {
+    "key": "mcs.knowledge.full_result_count",
+    "value_type": "string",
+    "description": "Number of full results from knowledge search",
+    "requirement_level": "recommended",
+    "example_value": "5"
+  },
+  {
+    "key": "mcs.knowledge.filtered_result_count",
+    "value_type": "string",
+    "description": "Number of filtered results from knowledge search",
+    "requirement_level": "recommended",
+    "example_value": "3"
+  },
+  {
+    "key": "mcs.knowledge.filtered_results",
+    "value_type": "string",
+    "description": "Filtered search results from knowledge base",
+    "requirement_level": "recommended",
+    "example_value": "[{\"id\": \"doc1\"}]"
+  },
+  {
+    "key": "mcs.knowledge.full_results",
+    "value_type": "string",
+    "description": "Full search results from knowledge base",
+    "requirement_level": "recommended",
+    "example_value": "[{\"id\": \"doc1\"}]"
+  },
+  {
+    "key": "mcs.knowledge.source_count",
+    "value_type": "string",
+    "description": "Number of knowledge sources queried",
+    "requirement_level": "recommended",
+    "example_value": "2"
+  },
+  {
+    "key": "mcs.mcp.connector_name",
+    "value_type": "string",
+    "description": "Name of the MCP connector from botContent",
+    "requirement_level": "recommended",
+    "example_value": "Zava Expense MCP Connector"
+  },
+  {
+    "key": "mcs.plan.parent_id",
+    "value_type": "string",
+    "description": "Parent plan identifier for nested plan execution",
+    "requirement_level": "recommended",
+    "example_value": "plan-abc-123"
+  },
+  {
+    "key": "mcs.plan.parent_step_id",
+    "value_type": "string",
+    "description": "Parent plan step identifier for nested plan execution",
+    "requirement_level": "recommended",
+    "example_value": "step-xyz-456"
+  },
+  {
+    "key": "mcs.plan.step_id",
+    "value_type": "string",
+    "description": "Unique step identifier within a plan",
+    "requirement_level": "recommended",
+    "example_value": "step-001"
+  },
+  {
+    "key": "mcs.step.state",
+    "value_type": "string",
+    "description": "Current state of a plan step",
+    "requirement_level": "recommended",
+    "example_value": "Triggered"
+  },
+  {
+    "key": "mcs.step.has_recommendations",
+    "value_type": "string",
+    "description": "Whether the step produced recommendations",
+    "requirement_level": "recommended",
+    "example_value": "True"
+  },
+  {
+    "key": "mcs.step.auto_filled_arguments",
+    "value_type": "string",
+    "description": "Arguments auto-filled by the orchestrator for a plan step",
+    "requirement_level": "recommended",
+    "example_value": "{\"query\": \"expense policy\"}"
+  },
+  {
+    "key": "mcs.step.arguments",
+    "value_type": "string",
+    "description": "Arguments bound to a plan step",
+    "requirement_level": "recommended",
+    "example_value": "{\"arg\": \"value\"}"
+  },
+  {
+    "key": "mcs.step.observation",
+    "value_type": "string",
+    "description": "Observation JSON from plan step execution",
+    "requirement_level": "recommended",
+    "example_value": "{\"status\": \"ok\"}"
+  },
+  {
+    "key": "mcs.topic.type",
+    "value_type": "string",
+    "description": "Type of dialog redirect target",
+    "requirement_level": "recommended",
+    "example_value": "Topic"
+  },
+  {
+    "key": "mcs.variable.id",
+    "value_type": "string",
+    "description": "Identifier of the variable being assigned",
+    "requirement_level": "recommended",
+    "example_value": "bot.userName"
+  },
+  {
+    "key": "mcs.variable.new_value",
+    "value_type": "string",
+    "description": "New value assigned to the variable",
+    "requirement_level": "recommended",
+    "example_value": "John Doe"
+  },
+  {
+    "key": "mcs.error.sub_code",
+    "value_type": "string",
+    "description": "Sub-error code for more specific error classification",
+    "requirement_level": "recommended",
+    "example_value": "ActionExecutionTimeout"
+  },
+  {
+    "key": "mcs.ai_builder.action_id",
+    "value_type": "string",
+    "description": "ID of the AI Builder action executed",
+    "requirement_level": "recommended",
+    "example_value": "invokeAIBuilderModelAction_drcwKG"
+  },
+  {
+    "key": "mcs.ai_builder.input",
+    "value_type": "string",
+    "description": "Input provided to the AI Builder model",
+    "requirement_level": "recommended",
+    "example_value": "{\"query\": \"...\"}"
+  },
+  {
+    "key": "mcs.ai_builder.output_text",
+    "value_type": "string",
+    "description": "Output text returned by the AI Builder model",
+    "requirement_level": "recommended",
+    "example_value": "Found 5 matches..."
+  },
+  {
+    "key": "mcs.ai_builder.topic_id",
+    "value_type": "string",
+    "description": "Topic ID where AI Builder action occurred",
+    "requirement_level": "recommended",
+    "example_value": "5abce19e-..."
+  },
+  {
+    "key": "mcs.ai_builder.topic_schema_name",
+    "value_type": "string",
+    "description": "Schema name of the topic",
+    "requirement_level": "recommended",
+    "example_value": "auto_agent_550xh.topic.Searchdevice"
+  },
+  {
+    "key": "mcs.step.blocked_error",
+    "value_type": "string",
+    "description": "Error details when a step is blocked by policy",
+    "requirement_level": "recommended",
+    "example_value": "{\"code\": \"contentFiltered\"}"
+  },
+  {
+    "key": "mcs.knowledge.cited_sources",
+    "value_type": "string",
+    "description": "JSON-encoded list of cited knowledge sources",
+    "requirement_level": "recommended",
+    "example_value": "[{\"name\": \"policy.pdf\"}]"
+  },
+  {
+    "key": "mcs.knowledge.completion_state",
+    "value_type": "string",
+    "description": "State of knowledge retrieval (Executed, NotExecuted)",
+    "requirement_level": "recommended",
+    "example_value": "Executed"
+  },
+  {
+    "key": "mcs.knowledge.failed_source_types",
+    "value_type": "string",
+    "description": "List of knowledge source types that failed",
+    "requirement_level": "recommended",
+    "example_value": "[\"SharePoint\"]"
+  },
+  {
+    "key": "mcs.knowledge.is_searched",
+    "value_type": "string",
+    "description": "Whether knowledge search was performed",
+    "requirement_level": "recommended",
+    "example_value": "True"
+  }
+]
