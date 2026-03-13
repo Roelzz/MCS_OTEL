@@ -74,37 +74,6 @@ def _normalize_timestamp(ts: int | float | str | None) -> int:
             return 0
     return 0
 
-# Event types we track for entity extraction
-TRACKED_EVENT_TYPES = {
-    "UniversalSearchToolTraceData",
-    "DynamicPlanReceived",
-    "DynamicPlanStepTriggered",
-    "DynamicPlanStepFinished",
-    "DynamicPlanFinished",
-    "DynamicPlanReceivedDebug",
-    "DynamicPlanStepBindUpdate",
-    "DynamicServerInitialize",
-    "DynamicServerInitializeConfirmation",
-    "DynamicServerToolsList",
-    "DialogTracingInfo",
-    "DialogRedirect",
-    "VariableAssignment",
-    "ErrorTraceData",
-    "ErrorCode",
-    "ProtocolInfo",
-    "UnknownIntent",
-    "SkillInfo",
-    # Evaluation and success tracking
-    "CSATSurveyResponse",
-    "CSATSurveyRequest",
-    "PRRSurveyResponse",
-    "PRRSurveyRequest",
-    "ImpliedSuccess",
-    "AIBuilderTraceData",
-    "DynamicPlanStepBlocked",
-    "KnowledgeTraceData",
-}
-
 
 def _resolve_activities(content: str) -> list[dict]:
     """Parse raw JSON content into a list of activity dicts.
@@ -360,12 +329,8 @@ def extract_entities(
         spec = load_default_mapping()
 
     # Build tracked set and label map from spec
-    if spec.event_metadata:
-        tracked_types = {em.value_type for em in spec.event_metadata if em.tracked}
-        label_map = {em.value_type: em.label for em in spec.event_metadata if em.label}
-    else:
-        tracked_types = TRACKED_EVENT_TYPES
-        label_map = None
+    tracked_types = {em.value_type for em in spec.event_metadata if em.tracked}
+    label_map = {em.value_type: em.label for em in spec.event_metadata if em.label}
 
     entities: list[MCSEntity] = []
 
@@ -427,7 +392,7 @@ def extract_entities(
         count = trace_counters.get(vt, 0)
         trace_counters[vt] = count + 1
 
-        label = label_map[vt] if label_map and vt in label_map else _event_label(vt)
+        label = label_map.get(vt, vt)
         props = dict(a.value)
         props["timestamp"] = a.timestamp
 
@@ -677,37 +642,6 @@ _ENRICHMENT_OPS = {
     "rename": _op_rename,
     "conditional": _op_conditional,
 }
-
-
-def _event_label(value_type: str) -> str:
-    """Map a value_type to a human-readable label."""
-    labels = {
-        "UniversalSearchToolTraceData": "Knowledge Search",
-        "DynamicPlanReceived": "Plan Received",
-        "DynamicPlanReceivedDebug": "Plan Received (Debug)",
-        "DynamicPlanStepTriggered": "Plan Step Triggered",
-        "DynamicPlanStepFinished": "Plan Step Finished",
-        "DynamicPlanStepBindUpdate": "Plan Step Bind Update",
-        "DynamicPlanFinished": "Plan Finished",
-        "DynamicServerInitialize": "MCP Server Init",
-        "DynamicServerToolsList": "MCP Tools List",
-        "DialogTracingInfo": "Dialog Tracing",
-        "DialogRedirect": "Dialog Redirect",
-        "VariableAssignment": "Variable Assignment",
-        "ErrorTraceData": "Error",
-        "ErrorCode": "Error Code",
-        "DynamicServerInitializeConfirmation": "MCP Server Init Confirmation",
-        "ProtocolInfo": "Protocol Info",
-        "UnknownIntent": "Unknown Intent",
-        "SkillInfo": "Skill Info",
-        # Evaluation types
-        "CSATSurveyResponse": "CSAT Response",
-        "CSATSurveyRequest": "CSAT Request",
-        "PRRSurveyResponse": "PRR Response",
-        "PRRSurveyRequest": "PRR Request",
-        "ImpliedSuccess": "Implied Success",
-    }
-    return labels.get(value_type, value_type)
 
 
 def parse_bot_content(yaml_content: str) -> dict:

@@ -22,7 +22,7 @@ from improve import (
     run_improvement_loop,
 )
 from models import AttributeMapping, MappingSpecification, SpanMappingRule
-from parsers import TRACKED_EVENT_TYPES
+from config_loader import load_default_mapping as _load_spec
 
 
 # ---------------------------------------------------------------------------
@@ -43,7 +43,8 @@ def default_spec() -> MappingSpecification:
 
 @pytest.fixture
 def tracked_types() -> set[str]:
-    return set(TRACKED_EVENT_TYPES)
+    spec = _load_spec()
+    return {em.value_type for em in spec.event_metadata if em.tracked}
 
 
 @pytest.fixture

@@ -13,7 +13,8 @@ from loguru import logger
 
 from config_loader import load_default_mapping
 from models import AttributeMapping, OTELOperationName, OTELSpanKind, SpanMappingRule
-from parsers import TRACKED_EVENT_TYPES, _resolve_activities, parse_transcript
+from config_loader import load_default_mapping as _load_spec
+from parsers import _resolve_activities, parse_transcript
 
 logger.remove()
 logger.add(
@@ -23,6 +24,9 @@ logger.add(
 )
 
 app = typer.Typer(help="Analyze MCS transcripts for mapping coverage gaps.")
+
+_SPEC = _load_spec()
+TRACKED_EVENT_TYPES = {em.value_type for em in _SPEC.event_metadata if em.tracked}
 
 DEFAULT_SEARCH_DIRS = [
     "tests/fixtures/",

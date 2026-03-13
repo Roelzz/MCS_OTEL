@@ -185,6 +185,20 @@
       "label": "Variable Assignment",
       "entity_type": "trace_event",
       "default_output_type": "event"
+    },
+    {
+      "value_type": "EscalationRequested",
+      "tracked": true,
+      "label": "Escalation Requested",
+      "entity_type": "trace_event",
+      "default_output_type": "event"
+    },
+    {
+      "value_type": "HandOff",
+      "tracked": true,
+      "label": "HandOff",
+      "entity_type": "trace_event",
+      "default_output_type": "event"
     }
   ],
   "enrichment_rules": [

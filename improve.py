@@ -40,7 +40,7 @@ from models import (
     OTELSpanKind,
     SpanMappingRule,
 )
-from parsers import TRACKED_EVENT_TYPES, extract_entities, parse_transcript
+from parsers import extract_entities, parse_transcript
 
 logger.remove()
 logger.add(
@@ -685,7 +685,7 @@ def run_improvement_loop(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     spec = load_default_mapping()
-    tracked_types = set(TRACKED_EVENT_TYPES)
+    tracked_types = {em.value_type for em in spec.event_metadata if em.tracked}
     runs: list[ImprovementRun] = []
     prev_coverage = 0.0
     prev_fill = 0.0
