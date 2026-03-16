@@ -169,9 +169,11 @@ class PreviewMixin(rx.State, mixin=True):
                 "status": span.status,
                 "child_count": len(span.children),
                 "is_event": False,
+                "is_point_event": dur_ms == 0,
                 "event_count": len(span.events),
                 "rule_id": rule_id,
                 "index": 0,
+                "start_offset_ms": 0.0,
             }
         ]
         # Show events on this span (indented one level deeper)
@@ -189,17 +191,23 @@ class PreviewMixin(rx.State, mixin=True):
                 "status": "OK",
                 "child_count": 0,
                 "is_event": True,
+                "is_point_event": True,
                 "event_count": 0,
                 "rule_id": "",
                 "index": 0,
+                "start_offset_ms": 0.0,
             })
         for child in span.children:
             result.extend(self._flatten_tree(child, depth + 1))
 
-        # Assign index for zebra striping (only at top-level call, depth==0)
+        # Assign index and start_offset_ms (only at top-level call, depth==0)
         if depth == 0:
+            trace_start_ns = result[0]["start_time_ns"] if result else 0
             for i, item in enumerate(result):
                 item["index"] = i
+                item["start_offset_ms"] = (
+                    (item["start_time_ns"] - trace_start_ns) / 1_000_000
+                )
 
         return result
 

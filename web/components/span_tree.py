@@ -1,5 +1,6 @@
 import reflex as rx
 
+from web.components.timeline import timeline_gantt
 from web.state import State
 
 
@@ -361,7 +362,7 @@ def span_tree() -> rx.Component:
             ),
             rx.fragment(),
         ),
-        # Span tree
+        # Span tree / timeline tabs
         rx.cond(
             State.preview_loading,
             rx.center(
@@ -371,13 +372,30 @@ def span_tree() -> rx.Component:
             ),
             rx.cond(
                 State.filtered_preview_spans.length() > 0,
-                rx.vstack(
-                    rx.foreach(State.filtered_preview_spans, _span_row),
-                    spacing="0",
+                rx.tabs.root(
+                    rx.tabs.list(
+                        rx.tabs.trigger("Tree", value="tree"),
+                        rx.tabs.trigger("Timeline", value="timeline"),
+                    ),
+                    rx.tabs.content(
+                        rx.vstack(
+                            rx.foreach(State.filtered_preview_spans, _span_row),
+                            spacing="0",
+                            width="100%",
+                            border="1px solid var(--gray-a4)",
+                            border_radius="var(--radius-2)",
+                            padding="0.5em",
+                        ),
+                        value="tree",
+                        padding_top="0.5em",
+                    ),
+                    rx.tabs.content(
+                        timeline_gantt(),
+                        value="timeline",
+                        padding_top="0.5em",
+                    ),
+                    default_value="timeline",
                     width="100%",
-                    border="1px solid var(--gray-a4)",
-                    border_radius="var(--radius-2)",
-                    padding="0.5em",
                 ),
                 rx.text(
                     "Upload a transcript and refresh to see trace preview.",

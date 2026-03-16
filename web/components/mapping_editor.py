@@ -218,7 +218,7 @@ def _rule_body(rule: rx.Var[dict]) -> rx.Component:
             attr_count > 0,
             rx.vstack(
                 rx.foreach(
-                    rule["enriched_attribute_mappings"],
+                    rule["enriched_attribute_mappings"].to(list[dict]),
                     _attr_mapping_row,
                 ),
                 spacing="1",
