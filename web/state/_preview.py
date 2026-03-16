@@ -15,6 +15,7 @@ class PreviewMixin(rx.State, mixin=True):
     selected_span_id: str = ""
     # Per-rule match stats after preview
     _rule_stats: list[dict] = []
+    _cached_otlp: str = ""
 
     @rx.var
     def selected_span_detail(self) -> dict:
@@ -47,6 +48,7 @@ class PreviewMixin(rx.State, mixin=True):
         if not self.entities or not self.mapping_spec:
             self.preview_spans = []
             self._rule_stats = []
+            self._cached_otlp = ""
             return
 
         try:
@@ -66,11 +68,16 @@ class PreviewMixin(rx.State, mixin=True):
 
             # Compute per-rule match stats
             self._rule_stats = self._compute_rule_stats(spec, self.preview_spans)
+
+            # Cache OTLP JSON for export
+            otlp = to_otlp_json(trace, spec.service_name)
+            self._cached_otlp = json.dumps(otlp, indent=2)
         except Exception as e:
             from loguru import logger
             logger.error("Failed to refresh preview: {}", e)
             self.preview_spans = []
             self._rule_stats = []
+            self._cached_otlp = ""
 
     def _flatten_tree(self, span: OTELSpan, depth: int) -> list[dict]:
         """Recursively flatten span tree with depth metadata, including events."""
@@ -207,13 +214,14 @@ class PreviewMixin(rx.State, mixin=True):
 
     def export_otlp_json(self) -> str:
         """Export OTLP JSON for download."""
+        if self._cached_otlp:
+            return self._cached_otlp
         if not self.entities or not self.mapping_spec:
             return "{}"
         entities = [MCSEntity(**e) for e in self.entities]
         spec = MappingSpecification(**self.mapping_spec)
         trace = apply_mapping(entities, spec)
-        service_name = spec.service_name
-        otlp = to_otlp_json(trace, service_name)
+        otlp = to_otlp_json(trace, spec.service_name)
         return json.dumps(otlp, indent=2)
 
     def download_otlp(self):

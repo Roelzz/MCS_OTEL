@@ -151,8 +151,24 @@ def apply_mapping(
     # Events to attach to parent spans (rule_id -> list of event dicts with parent info)
     pending_events: list[dict] = []
 
+    # Build entity index for fast rule matching
+    _entity_by_type: dict[str, list[MCSEntity]] = defaultdict(list)
+    _entity_by_type_value: dict[tuple[str, str], list[MCSEntity]] = defaultdict(list)
+    for _e in entities:
+        _entity_by_type[_e.entity_type].append(_e)
+        if _e.value_type:
+            _entity_by_type_value[(_e.entity_type, _e.value_type)].append(_e)
+        if _e.label and _e.label != _e.value_type:
+            _entity_by_type_value[(_e.entity_type, _e.label)].append(_e)
+
     for rule in spec.rules:
-        matched = [e for e in entities if _matches_rule(e, rule)]
+        if rule.mcs_value_type:
+            candidates = _entity_by_type_value.get(
+                (rule.mcs_entity_type, rule.mcs_value_type), []
+            )
+        else:
+            candidates = _entity_by_type.get(rule.mcs_entity_type, [])
+        matched = [e for e in candidates if _matches_rule(e, rule)]
         logger.debug(
             "Rule '{}' matched {} entities", rule.rule_id, len(matched)
         )

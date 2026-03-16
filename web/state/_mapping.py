@@ -309,17 +309,27 @@ class MappingMixin(rx.State, mixin=True):
         return "trace_event"
 
     def _get_spec(self) -> MappingSpecification:
-        """Get current spec from state dict."""
+        """Get current spec from state dict — used only for validation-heavy paths."""
         if self.mapping_spec:
             return MappingSpecification(**self.mapping_spec)
         return MappingSpecification()
 
+    def _find_rule_dict(self, rule_id: str) -> dict | None:
+        """Find a rule dict directly in mapping_spec['rules'] by rule_id."""
+        if not self.mapping_spec or "rules" not in self.mapping_spec:
+            return None
+        for rule in self.mapping_spec["rules"]:
+            if rule.get("rule_id") == rule_id:
+                return rule
+        return None
+
     def remove_connection(self, rule_id: str):
         """Remove connection line + rule."""
         self.connections = [c for c in self.connections if c["rule_id"] != rule_id]
-        spec = self._get_spec()
-        spec.rules = [r for r in spec.rules if r.rule_id != rule_id]
-        self.mapping_spec = spec.model_dump()
+        if self.mapping_spec and "rules" in self.mapping_spec:
+            self.mapping_spec["rules"] = [
+                r for r in self.mapping_spec["rules"] if r.get("rule_id") != rule_id
+            ]
         if self.selected_rule_id == rule_id:
             self.selected_rule_id = ""
 
@@ -366,64 +376,60 @@ class MappingMixin(rx.State, mixin=True):
 
     def update_rule_field(self, rule_id: str, field: str, value: str):
         """Update a single field on a rule."""
-        spec = self._get_spec()
-        for rule in spec.rules:
-            if rule.rule_id == rule_id:
-                if field == "span_name_template":
-                    rule.span_name_template = value
-                elif field == "parent_rule_id":
-                    rule.parent_rule_id = value if value else None
-                elif field == "is_root":
-                    rule.is_root = value.lower() == "true"
-                elif field == "rule_name":
-                    rule.rule_name = value
-                elif field == "otel_span_kind":
-                    rule.otel_span_kind = OTELSpanKind(value)
-                elif field == "output_type":
-                    rule.output_type = value if value in ("span", "event") else "span"
-                break
-        self.mapping_spec = spec.model_dump()
+        rule = self._find_rule_dict(rule_id)
+        if not rule:
+            return
+        if field == "span_name_template":
+            rule["span_name_template"] = value
+        elif field == "parent_rule_id":
+            rule["parent_rule_id"] = value if value else None
+        elif field == "is_root":
+            rule["is_root"] = value.lower() == "true"
+        elif field == "rule_name":
+            rule["rule_name"] = value
+        elif field == "otel_span_kind":
+            rule["otel_span_kind"] = OTELSpanKind(value).value
+        elif field == "output_type":
+            rule["output_type"] = value if value in ("span", "event") else "span"
 
     def add_attribute_mapping(self, rule_id: str):
         """Add empty attribute mapping to rule."""
-        spec = self._get_spec()
-        for rule in spec.rules:
-            if rule.rule_id == rule_id:
-                rule.attribute_mappings.append(
-                    AttributeMapping(mcs_property="", otel_attribute="")
-                )
-                break
-        self.mapping_spec = spec.model_dump()
+        rule = self._find_rule_dict(rule_id)
+        if not rule:
+            return
+        if "attribute_mappings" not in rule:
+            rule["attribute_mappings"] = []
+        rule["attribute_mappings"].append(
+            {"mcs_property": "", "otel_attribute": "", "transform": "direct", "transform_value": ""}
+        )
 
     def remove_attribute_mapping(self, rule_id: str, idx: int):
         """Remove attribute mapping from rule by index."""
-        spec = self._get_spec()
-        for rule in spec.rules:
-            if rule.rule_id == rule_id:
-                if 0 <= idx < len(rule.attribute_mappings):
-                    rule.attribute_mappings.pop(idx)
-                break
-        self.mapping_spec = spec.model_dump()
+        rule = self._find_rule_dict(rule_id)
+        if not rule:
+            return
+        mappings = rule.get("attribute_mappings", [])
+        if 0 <= idx < len(mappings):
+            mappings.pop(idx)
 
     def update_attribute_mapping(
         self, rule_id: str, idx: int, field: str, value: str
     ):
         """Update a field on a specific attribute mapping."""
-        spec = self._get_spec()
-        for rule in spec.rules:
-            if rule.rule_id == rule_id:
-                if 0 <= idx < len(rule.attribute_mappings):
-                    am = rule.attribute_mappings[idx]
-                    if field == "mcs_property":
-                        am.mcs_property = value
-                    elif field == "otel_attribute":
-                        am.otel_attribute = value
-                    elif field == "transform":
-                        am.transform = TransformType(value)
-                    elif field == "transform_value":
-                        am.transform_value = value
-                break
-        self.mapping_spec = spec.model_dump()
+        rule = self._find_rule_dict(rule_id)
+        if not rule:
+            return
+        mappings = rule.get("attribute_mappings", [])
+        if 0 <= idx < len(mappings):
+            am = mappings[idx]
+            if field == "mcs_property":
+                am["mcs_property"] = value
+            elif field == "otel_attribute":
+                am["otel_attribute"] = value
+            elif field == "transform":
+                am["transform"] = TransformType(value).value
+            elif field == "transform_value":
+                am["transform_value"] = value
 
     def load_defaults(self):
         """Populate from config/default_mapping.json, also populate connections and flow edges."""
