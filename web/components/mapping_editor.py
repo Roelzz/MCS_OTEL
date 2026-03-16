@@ -266,6 +266,37 @@ def mapping_editor() -> rx.Component:
                 " rules",
                 color_scheme="gray",
             ),
+            rx.cond(
+                State.rule_filter_text != "",
+                rx.badge(
+                    State.mapping_rules.length().to(str),
+                    " of ",
+                    State.total_rule_count.to(str),
+                    color_scheme="blue",
+                    size="1",
+                ),
+            ),
+            rx.hstack(
+                rx.icon("search", size=14, color="var(--gray-9)"),
+                rx.input(
+                    placeholder="Filter rules...",
+                    value=State.rule_filter_text,
+                    on_change=State.set_rule_filter_text,
+                    size="1",
+                    width="180px",
+                ),
+                rx.cond(
+                    State.rule_filter_text != "",
+                    rx.icon_button(
+                        rx.icon("x", size=12),
+                        size="1",
+                        variant="ghost",
+                        on_click=State.set_rule_filter_text(""),
+                    ),
+                ),
+                spacing="1",
+                align="center",
+            ),
             rx.spacer(),
             rx.button(
                 "Expand All",

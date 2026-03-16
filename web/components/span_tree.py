@@ -278,6 +278,37 @@ def span_tree() -> rx.Component:
     return rx.vstack(
         rx.hstack(
             rx.heading("Trace Preview", size="4"),
+            rx.hstack(
+                rx.icon("search", size=14, color="var(--gray-9)"),
+                rx.input(
+                    placeholder="Filter spans...",
+                    value=State.span_filter_text,
+                    on_change=State.set_span_filter_text,
+                    size="1",
+                    width="180px",
+                ),
+                rx.cond(
+                    State.span_filter_text != "",
+                    rx.icon_button(
+                        rx.icon("x", size=12),
+                        size="1",
+                        variant="ghost",
+                        on_click=State.set_span_filter_text(""),
+                    ),
+                ),
+                spacing="1",
+                align="center",
+            ),
+            rx.cond(
+                State.span_filter_text != "",
+                rx.badge(
+                    State.filtered_preview_spans.length().to(str),
+                    " of ",
+                    State.total_span_count.to(str),
+                    color_scheme="blue",
+                    size="1",
+                ),
+            ),
             rx.spacer(),
             rx.button(
                 "Refresh",
@@ -332,19 +363,27 @@ def span_tree() -> rx.Component:
         ),
         # Span tree
         rx.cond(
-            State.preview_spans.length() > 0,
-            rx.vstack(
-                rx.foreach(State.preview_spans, _span_row),
-                spacing="0",
+            State.preview_loading,
+            rx.center(
+                rx.spinner(size="3"),
                 width="100%",
-                border="1px solid var(--gray-a4)",
-                border_radius="var(--radius-2)",
-                padding="0.5em",
+                padding="2em",
             ),
-            rx.text(
-                "Upload a transcript and refresh to see trace preview.",
-                size="2",
-                color="var(--gray-9)",
+            rx.cond(
+                State.filtered_preview_spans.length() > 0,
+                rx.vstack(
+                    rx.foreach(State.filtered_preview_spans, _span_row),
+                    spacing="0",
+                    width="100%",
+                    border="1px solid var(--gray-a4)",
+                    border_radius="var(--radius-2)",
+                    padding="0.5em",
+                ),
+                rx.text(
+                    "Upload a transcript and refresh to see trace preview.",
+                    size="2",
+                    color="var(--gray-9)",
+                ),
             ),
         ),
         # Span detail panel

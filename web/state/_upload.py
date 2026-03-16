@@ -23,12 +23,14 @@ class UploadMixin(rx.State, mixin=True):
         file = files[0]
         content = await file.read()
         text = content.decode("utf-8")
-        self._parse_content(text)
+        if self._parse_content(text):
+            return rx.toast("Transcript parsed successfully")
 
     def handle_paste(self, content: str):
         """Handle pasted JSON content."""
         self.upload_error = ""
-        self._parse_content(content)
+        if self._parse_content(content):
+            return rx.toast("Transcript parsed successfully")
 
     async def handle_bot_content_upload(self, files: list[rx.UploadFile]):
         """Handle botContent.yml upload — parse and re-extract entities."""
@@ -48,8 +50,8 @@ class UploadMixin(rx.State, mixin=True):
         except Exception as e:
             self.upload_error = f"botContent error: {e}"
 
-    def _parse_content(self, content: str):
-        """Parse transcript content and extract entities."""
+    def _parse_content(self, content: str) -> bool:
+        """Parse transcript content and extract entities. Returns True on success."""
         try:
             t = parse_transcript(content)
             self.raw_content = content
@@ -59,7 +61,9 @@ class UploadMixin(rx.State, mixin=True):
             )
             self.entities = [e.model_dump() for e in entities]
             self.upload_error = ""
+            return True
         except Exception as e:
             self.upload_error = str(e)
             self.transcript = {}
             self.entities = []
+            return False

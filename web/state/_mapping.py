@@ -182,6 +182,7 @@ class MappingMixin(rx.State, mixin=True):
     selected_mcs_entity: str = ""  # Currently clicked MCS entity in connection view
     connections: list[dict] = []  # [{mcs_entity_type, otel_target, rule_id}]
     _collapsed_rules: set[str] = set()
+    rule_filter_text: str = ""
 
     # React Flow state
     flow_nodes: list[dict] = DEFAULT_FLOW_NODES
@@ -238,7 +239,23 @@ class MappingMixin(rx.State, mixin=True):
             r["stat_match_count"] = st.get("match_count", -1)
             r["stat_fill_rate"] = st.get("fill_rate", -1.0)
             rules.append(r)
+
+        if self.rule_filter_text:
+            q = self.rule_filter_text.lower()
+            rules = [r for r in rules if (
+                q in r.get("rule_id", "").lower()
+                or q in r.get("mcs_value_type", "").lower()
+                or q in r.get("otel_operation_name", "").lower()
+                or q in r.get("rule_name", "").lower()
+            )]
+
         return rules
+
+    @rx.var(cache=True)
+    def total_rule_count(self) -> int:
+        if not self.mapping_spec or "rules" not in self.mapping_spec:
+            return 0
+        return len(self.mapping_spec["rules"])
 
     @rx.var(cache=True)
     def has_mapping(self) -> bool:
@@ -446,6 +463,7 @@ class MappingMixin(rx.State, mixin=True):
 
         # Build flow edges from connections
         self.flow_edges = _build_flow_edges(self.connections)
+        return rx.toast("Default mapping loaded")
 
     def import_mapping(self, json_str: str):
         """Import mapping from JSON string."""
@@ -470,6 +488,7 @@ class MappingMixin(rx.State, mixin=True):
                 )
             # Rebuild flow edges
             self.flow_edges = _build_flow_edges(self.connections)
+            return rx.toast("Mapping imported")
         except Exception as e:
             from loguru import logger
             logger.error("Failed to import mapping: {}", e)
