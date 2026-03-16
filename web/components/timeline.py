@@ -6,24 +6,29 @@ from web.state import State
 def _time_axis() -> rx.Component:
     """Time axis labels at top of timeline."""
     return rx.hstack(
-        rx.text("0ms", size="1", color="var(--gray-8)", font_family="JetBrains Mono"),
-        rx.spacer(),
-        rx.text("25%", size="1", color="var(--gray-8)", font_family="JetBrains Mono"),
-        rx.spacer(),
-        rx.text("50%", size="1", color="var(--gray-8)", font_family="JetBrains Mono"),
-        rx.spacer(),
-        rx.text("75%", size="1", color="var(--gray-8)", font_family="JetBrains Mono"),
-        rx.spacer(),
-        rx.text(
-            State.timeline_max_ms.to(int).to(str) + "ms",
-            size="1",
-            color="var(--gray-8)",
-            font_family="JetBrains Mono",
+        rx.text("", min_width="200px"),
+        rx.hstack(
+            rx.text("0", size="1", color="var(--gray-8)", font_family="JetBrains Mono"),
+            rx.spacer(),
+            rx.text("25%", size="1", color="var(--gray-8)", font_family="JetBrains Mono"),
+            rx.spacer(),
+            rx.text("50%", size="1", color="var(--gray-8)", font_family="JetBrains Mono"),
+            rx.spacer(),
+            rx.text("75%", size="1", color="var(--gray-8)", font_family="JetBrains Mono"),
+            rx.spacer(),
+            rx.text(
+                State.timeline_max_ms.to(int).to(str) + "ms",
+                size="1",
+                color="var(--gray-8)",
+                font_family="JetBrains Mono",
+            ),
+            flex="1",
         ),
         width="100%",
         padding_x="4px",
         padding_bottom="4px",
         border_bottom="1px solid var(--gray-a4)",
+        spacing="2",
     )
 
 
@@ -37,17 +42,14 @@ def _timeline_bar(span: rx.Var[dict]) -> rx.Component:
     dur_display = span["duration_display"].to(str)
     max_ms = State.timeline_max_ms
 
-    # Calculate left% and width% (min 0.5% width for visibility)
-    left_pct = (offset_ms / max_ms * 100).to(str) + "%"
-    width_pct = rx.cond(
-        dur_ms / max_ms * 100 < 0.5,
-        "0.5%",
-        (dur_ms / max_ms * 100).to(str) + "%",
-    )
+    # Margin-left positions the bar start, width shows duration
+    # Use calc() with max() to ensure minimum visible bar width
+    margin_left_pct = (offset_ms / max_ms * 100).to(str) + "%"
+    width_pct = (dur_ms / max_ms * 100).to(str) + "%"
 
     return rx.box(
         rx.hstack(
-            # Depth indentation label
+            # Span name label with depth indentation
             rx.text(
                 name,
                 size="1",
@@ -56,43 +58,47 @@ def _timeline_bar(span: rx.Var[dict]) -> rx.Component:
                 white_space="nowrap",
                 overflow="hidden",
                 text_overflow="ellipsis",
-                max_width="180px",
-                min_width="180px",
-                padding_left=(depth * 12).to(str) + "px",
+                min_width="200px",
+                max_width="200px",
+                padding_left=(depth * 16).to(str) + "px",
             ),
-            # Bar container (relative)
+            # Bar track
             rx.box(
+                # The colored bar
                 rx.box(
-                    rx.text(
-                        dur_display,
-                        size="1",
-                        color="white",
-                        padding_x="4px",
-                        white_space="nowrap",
-                        overflow="hidden",
-                        text_overflow="ellipsis",
-                    ),
-                    position="absolute",
-                    left=left_pct,
-                    width=width_pct,
-                    height="100%",
                     background=color,
                     border_radius="3px",
-                    display="flex",
-                    align_items="center",
-                    min_width="4px",
+                    height="18px",
+                    min_width="6px",
+                    width="100%",
                 ),
-                position="relative",
-                height="22px",
-                flex="1",
+                # Duration label positioned after the bar
+                rx.text(
+                    dur_display,
+                    size="1",
+                    color="var(--gray-9)",
+                    white_space="nowrap",
+                    padding_left="4px",
+                    font_family="JetBrains Mono",
+                ),
+                display="flex",
+                align_items="center",
+                margin_left=margin_left_pct,
+                width=rx.cond(
+                    dur_ms / max_ms * 100 < 1.5,
+                    "1.5%",
+                    width_pct,
+                ),
+                flex_shrink="0",
             ),
+            flex="1",
+            overflow="hidden",
             spacing="2",
-            width="100%",
             align="center",
         ),
         cursor="pointer",
         on_click=State.select_span(span_id),
-        padding_y="2px",
+        padding_y="1px",
         padding_x="4px",
         border_radius="var(--radius-1)",
         background=rx.cond(
