@@ -230,6 +230,28 @@ def _rule_body(rule: rx.Var[dict]) -> rx.Component:
                 overflow_y="auto",
             ),
         ),
+        # Per-attribute coverage (only when this rule is selected and stats available)
+        rx.cond(
+            (State.selected_rule_id == rule_id) & (State.selected_rule_attr_detail.length() > 0),  # type: ignore
+            rx.vstack(
+                rx.text("Attribute Coverage", size="2", weight="bold"),
+                rx.recharts.bar_chart(
+                    rx.recharts.bar(
+                        data_key="fill_pct",
+                        fill="var(--green-9)",
+                        radius=[0, 4, 4, 0],
+                    ),
+                    rx.recharts.x_axis(data_key="otel_attribute", font_size=10, angle=-35),
+                    rx.recharts.y_axis(font_size=10, domain=[0, 100]),
+                    rx.recharts.cartesian_grid(stroke_dasharray="3 3"),
+                    data=State.selected_rule_attr_detail,
+                    width="100%",
+                    height=200,
+                ),
+                spacing="2",
+                width="100%",
+            ),
+        ),
         spacing="2",
         width="100%",
     )

@@ -15,6 +15,7 @@ class PreviewMixin(rx.State, mixin=True):
     selected_span_id: str = ""
     span_filter_text: str = ""
     preview_loading: bool = False
+    span_view_mode: str = "tree"  # "tree" or "timeline"
     # Per-rule match stats after preview
     _rule_stats: list[dict] = []
     _cached_otlp: str = ""
@@ -81,6 +82,91 @@ class PreviewMixin(rx.State, mixin=True):
     @rx.var
     def rule_stats(self) -> list[dict]:
         return self._rule_stats
+
+    @rx.var(cache=True)
+    def error_summary(self) -> list[dict]:
+        """Spans with ERROR status + error events."""
+        if not self.preview_spans:
+            return []
+        error_names = set()
+        if self.mapping_spec:
+            error_names = set(self.mapping_spec.get("error_event_names", ["error", "error_code"]))
+
+        errors: list[dict] = []
+        for s in self.preview_spans:
+            if s.get("status") == "ERROR":
+                attrs = s.get("attributes", {})
+                errors.append({
+                    "span_id": s.get("span_id", ""),
+                    "name": s.get("name", ""),
+                    "error_type": "span_error",
+                    "detail": attrs.get("error.message", attrs.get("error.type", "ERROR")),
+                    "parent_span": "",
+                })
+            if s.get("is_event") and s.get("name", "").lower() in error_names:
+                errors.append({
+                    "span_id": s.get("span_id", ""),
+                    "name": s.get("name", ""),
+                    "error_type": "error_event",
+                    "detail": str(s.get("attributes", {})),
+                    "parent_span": "",
+                })
+        return errors
+
+    @rx.var(cache=True)
+    def selected_rule_attr_detail(self) -> list[dict]:
+        """Per-attribute fill detail for the selected rule (from mapping editor)."""
+        sel = getattr(self, "selected_rule_id", "")
+        if not sel or not self._rule_stats:
+            return []
+        for s in self._rule_stats:
+            if s.get("rule_id") == sel:
+                return s.get("attr_fill_detail", [])
+        return []
+
+    @rx.var(cache=True)
+    def timeline_data(self) -> list[dict]:
+        """Span data formatted for timeline/Gantt view."""
+        if not self.preview_spans:
+            return []
+        # Find root start time for relative offsets
+        root_start = 0
+        for s in self.preview_spans:
+            if s.get("depth", 0) == 0 and not s.get("is_event", False):
+                root_start = s.get("start_time_ns", 0)
+                break
+
+        result = []
+        for s in self.preview_spans:
+            if s.get("is_event", False):
+                continue
+            start_ns = s.get("start_time_ns", 0)
+            end_ns = s.get("end_time_ns", 0)
+            offset_ms = (start_ns - root_start) / 1_000_000 if root_start else 0
+            dur_ms = (end_ns - start_ns) / 1_000_000
+            # Get color from operation name
+            op_name = s.get("attributes", {}).get("gen_ai.operation.name", "")
+            from web.state._mapping import OTEL_TARGET_COLORS
+            color = OTEL_TARGET_COLORS.get(op_name, "#6b7280")
+            result.append({
+                "name": s.get("name", ""),
+                "span_id": s.get("span_id", ""),
+                "start_offset_ms": round(offset_ms, 1),
+                "duration_ms": round(dur_ms, 1),
+                "depth": s.get("depth", 0),
+                "color": color,
+                "child_count": s.get("child_count", 0),
+                "duration_display": s.get("duration_display", ""),
+            })
+        return result
+
+    @rx.var(cache=True)
+    def timeline_max_ms(self) -> float:
+        """Total trace duration for timeline scaling."""
+        return self.preview_duration_ms if self.preview_duration_ms > 0 else 1.0
+
+    def set_span_view_mode(self, mode: str):
+        self.span_view_mode = mode
 
     def refresh_preview(self):
         """Apply mapping to entities, flatten tree, update state."""
@@ -252,6 +338,24 @@ class PreviewMixin(rx.State, mixin=True):
             else:
                 fill_rate = 0.0
 
+            # Per-attribute fill detail
+            attr_fill_detail: list[dict] = []
+            if expected_attrs > 0 and matched_spans:
+                for am in rule.attribute_mappings:
+                    filled = sum(
+                        1 for s in matched_spans
+                        if s.get("attributes", {}).get(am.otel_attribute, "")
+                    )
+                    total = len(matched_spans)
+                    pct = round(filled / total * 100, 1) if total > 0 else 0.0
+                    attr_fill_detail.append({
+                        "otel_attribute": am.otel_attribute,
+                        "mcs_property": am.mcs_property,
+                        "filled_count": filled,
+                        "total_count": total,
+                        "fill_pct": pct,
+                    })
+
             vt = rule.mcs_value_type or rule.mcs_entity_type
             stats.append({
                 "rule_id": rule_id,
@@ -260,6 +364,7 @@ class PreviewMixin(rx.State, mixin=True):
                 "match_count": match_count,
                 "attr_count": expected_attrs,
                 "fill_rate": fill_rate,
+                "attr_fill_detail": attr_fill_detail,
             })
         return stats
 

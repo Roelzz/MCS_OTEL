@@ -4,4 +4,9 @@ from web.components.connection_view import connection_view
 from web.components.mapping_editor import mapping_editor
 from web.components.span_tree import span_tree
 from web.components.export import export_panel
+from web.components.entity_browser import entity_browser
+from web.components.session_dashboard import session_dashboard
+from web.components.conversation_view import conversation_view
+from web.components.rule_hierarchy import rule_hierarchy
+from web.components.event_registry import event_registry
 from web.components.improve_dashboard import improve_dashboard, improve_page

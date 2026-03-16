@@ -157,20 +157,49 @@ def _build_flow_nodes() -> list[dict]:
     return nodes
 
 
-def _build_flow_edges(connections: list[dict]) -> list[dict]:
-    """Build React Flow edges from connection list."""
+def _build_flow_edges(
+    connections: list[dict], rules: list[dict] | None = None
+) -> list[dict]:
+    """Build React Flow edges from connection list, with attr labels from rules."""
+    # Build rule lookup by rule_id
+    rule_map: dict[str, dict] = {}
+    if rules:
+        for r in rules:
+            rule_map[r.get("rule_id", "")] = r
+
     edges: list[dict] = []
     for conn in connections:
         source = f"mcs_{conn['mcs_entity_type']}"
         target = f"otel_{conn['otel_target']}"
-        edges.append({
+        rule_id = conn.get("rule_id", "")
+
+        # Build label from attribute mappings
+        label = ""
+        rule = rule_map.get(rule_id)
+        if rule:
+            attrs = rule.get("attribute_mappings", [])
+            count = len(attrs)
+            if count > 0:
+                names = [a.get("otel_attribute", "").split(".")[-1] for a in attrs[:2]]
+                preview = ", ".join(n for n in names if n)
+                suffix = "..." if count > 2 else ""
+                label = f"{count} attrs: {preview}{suffix}"
+
+        edge: dict = {
             "id": f"{source}->{target}",
             "source": source,
             "target": target,
             "animated": True,
             "style": {"stroke": "#22c55e", "strokeWidth": 2},
             "markerEnd": {"type": "arrowclosed", "color": "#22c55e"},
-        })
+            "data": {"ruleId": rule_id},
+        }
+        if label:
+            edge["label"] = label
+            edge["labelStyle"] = {"fontSize": "10px", "fill": "#6b7280"}
+            edge["labelBgStyle"] = {"fill": "#fff", "fillOpacity": 0.85}
+            edge["labelBgPadding"] = [4, 2]
+        edges.append(edge)
     return edges
 
 
@@ -190,6 +219,7 @@ class MappingMixin(rx.State, mixin=True):
     # React Flow state
     flow_nodes: list[dict] = DEFAULT_FLOW_NODES
     flow_edges: list[dict] = []
+    selected_connection_rule_id: str = ""
 
     def toggle_rule_collapse(self, rule_id: str):
         if rule_id in self._collapsed_rules:
@@ -376,7 +406,9 @@ class MappingMixin(rx.State, mixin=True):
         self.connect_to_otel(otel_target)
 
         # Rebuild flow edges
-        self.flow_edges = _build_flow_edges(self.connections)
+        self.flow_edges = _build_flow_edges(
+            self.connections, self.mapping_spec.get("rules") if self.mapping_spec else None
+        )
 
     def on_flow_edge_delete(self, edge_id: str):
         """Handle edge deletion from React Flow."""
@@ -393,11 +425,248 @@ class MappingMixin(rx.State, mixin=True):
                 self.remove_connection(conn["rule_id"])
                 break
 
-        self.flow_edges = _build_flow_edges(self.connections)
+        self.flow_edges = _build_flow_edges(
+            self.connections, self.mapping_spec.get("rules") if self.mapping_spec else None
+        )
 
     @rx.var(cache=True)
     def rule_validation_errors(self) -> dict[str, str]:
         return self._rule_validation_errors
+
+    @rx.var(cache=True)
+    def rule_hierarchy_nodes(self) -> list[dict]:
+        """React Flow nodes for rule hierarchy visualization."""
+        if not self.mapping_spec or "rules" not in self.mapping_spec:
+            return []
+        rules = self.mapping_spec["rules"]
+        # Build stat lookup
+        stat_map: dict[str, dict] = {}
+        for s in getattr(self, "_rule_stats", []):
+            stat_map[s.get("rule_id", "")] = s
+
+        # BFS-style layout: group by depth (root → children → grandchildren)
+        children_map: dict[str, list[str]] = {}
+        root_ids: list[str] = []
+        rule_by_id: dict[str, dict] = {}
+        for r in rules:
+            rid = r.get("rule_id", "")
+            rule_by_id[rid] = r
+            parent = r.get("parent_rule_id")
+            if r.get("is_root") or not parent:
+                root_ids.append(rid)
+            else:
+                children_map.setdefault(parent, []).append(rid)
+
+        nodes: list[dict] = []
+        x_spacing = 280
+        y_spacing = 100
+        # BFS to assign positions
+        queue = [(rid, 0) for rid in root_ids]
+        col_counts: dict[int, int] = {}
+        while queue:
+            rid, depth = queue.pop(0)
+            r = rule_by_id.get(rid)
+            if not r:
+                continue
+            row = col_counts.get(depth, 0)
+            col_counts[depth] = row + 1
+
+            vt = r.get("mcs_value_type", "") or r.get("mcs_entity_type", "")
+            op = r.get("otel_operation_name", "")
+            output_type = r.get("output_type", "span")
+            st = stat_map.get(rid, {})
+            match_count = st.get("match_count", -1)
+            fill_rate = st.get("fill_rate", 0.0)
+
+            # Color based on fill rate
+            if match_count < 0:
+                border_color = "#6b7280"
+            elif fill_rate >= 80:
+                border_color = "#22c55e"
+            elif fill_rate >= 50:
+                border_color = "#f59e0b"
+            else:
+                border_color = "#ef4444"
+
+            is_event = output_type == "event"
+            label = f"{rid[:12]}\n{vt} → {op}"
+            match_label = f" [{match_count}]" if match_count >= 0 else ""
+
+            nodes.append({
+                "id": f"rule_{rid}",
+                "data": {"label": f"{label}{match_label}"},
+                "position": {"x": depth * x_spacing + 50, "y": row * y_spacing + 50},
+                "draggable": False,
+                "style": {
+                    "background": "#fef9c3" if is_event else "#f0fdf4",
+                    "border": f"2px solid {border_color}",
+                    "borderRadius": "8px",
+                    "fontSize": "11px",
+                    "padding": "8px",
+                    "width": "240px",
+                    "whiteSpace": "pre-line",
+                    "minHeight": "0",
+                },
+            })
+            for child_id in children_map.get(rid, []):
+                queue.append((child_id, depth + 1))
+
+        return nodes
+
+    @rx.var(cache=True)
+    def rule_hierarchy_edges(self) -> list[dict]:
+        """React Flow edges for rule parent-child relationships."""
+        if not self.mapping_spec or "rules" not in self.mapping_spec:
+            return []
+        edges: list[dict] = []
+        for r in self.mapping_spec["rules"]:
+            parent = r.get("parent_rule_id")
+            if parent:
+                rid = r.get("rule_id", "")
+                edges.append({
+                    "id": f"rule_{parent}->rule_{rid}",
+                    "source": f"rule_{parent}",
+                    "target": f"rule_{rid}",
+                    "style": {"stroke": "#22c55e", "strokeWidth": 1.5},
+                    "markerEnd": {"type": "arrowclosed", "color": "#22c55e"},
+                })
+        return edges
+
+    @rx.var(cache=True)
+    def enrichment_summary(self) -> list[dict]:
+        """Summary of enrichment rules with operation details."""
+        if not self.mapping_spec:
+            return []
+        rules = self.mapping_spec.get("enrichment_rules", [])
+        if not rules:
+            return []
+
+        # Count entities per value_type
+        entity_counts: dict[str, int] = {}
+        for e in getattr(self, "entities", []):
+            vt = e.get("value_type", "")
+            if vt:
+                entity_counts[vt] = entity_counts.get(vt, 0) + 1
+
+        result = []
+        for er in rules:
+            vt = er.get("value_type", "")
+            ops = er.get("derived_fields", [])
+            op_types = list({o.get("op", "") for o in ops})
+            field_names = [o.get("target", "") for o in ops]
+            result.append({
+                "value_type": vt,
+                "op_count": len(ops),
+                "op_types": op_types,
+                "field_names": field_names,
+                "entity_count": entity_counts.get(vt, 0),
+            })
+        return result
+
+    @rx.var(cache=True)
+    def enrichment_target_keys(self) -> list[str]:
+        """All target field names from enrichment rules — used to tag enriched properties."""
+        if not self.mapping_spec:
+            return []
+        rules = self.mapping_spec.get("enrichment_rules", [])
+        targets: list[str] = []
+        for er in rules:
+            for op in er.get("derived_fields", []):
+                t = op.get("target", "")
+                if t and t not in targets:
+                    targets.append(t)
+        return targets
+
+    @rx.var(cache=True)
+    def event_metadata_list(self) -> list[dict]:
+        """Event metadata enriched with entity counts and rule coverage."""
+        if not self.mapping_spec:
+            return []
+        meta = self.mapping_spec.get("event_metadata", [])
+        if not meta:
+            return []
+
+        # Count entities per value_type
+        entity_counts: dict[str, int] = {}
+        for e in getattr(self, "entities", []):
+            vt = e.get("value_type", "")
+            if vt:
+                entity_counts[vt] = entity_counts.get(vt, 0) + 1
+
+        # Build rule lookup by value_type
+        rule_lookup: dict[str, str] = {}
+        for r in self.mapping_spec.get("rules", []):
+            vt = r.get("mcs_value_type", "")
+            if vt:
+                rule_lookup[vt] = r.get("rule_id", "")
+
+        result = []
+        for em in meta:
+            vt = em.get("value_type", "")
+            ec = entity_counts.get(vt, 0)
+            rid = rule_lookup.get(vt, "")
+            has_rule = bool(rid)
+            # Status: green=entities+rule, orange=entities but no rule, gray=rule but no entities, red=neither
+            if ec > 0 and has_rule:
+                status = "covered"
+            elif ec > 0 and not has_rule:
+                status = "gap"
+            elif ec == 0 and has_rule:
+                status = "unused"
+            else:
+                status = "inactive"
+            result.append({
+                "value_type": vt,
+                "label": em.get("label", vt),
+                "description": em.get("description", ""),
+                "entity_count": ec,
+                "default_output_type": em.get("default_output_type", ""),
+                "has_rule": has_rule,
+                "rule_id": rid,
+                "status": status,
+            })
+        return result
+
+    def noop_dict(self, _data: dict):
+        """No-op handler for dict event specs."""
+        pass
+
+    def noop_str(self, _data: str):
+        """No-op handler for str event specs."""
+        pass
+
+    def select_connection_rule(self, rule_id: str):
+        """Select a connection edge to show its detail."""
+        self.selected_connection_rule_id = (
+            rule_id if self.selected_connection_rule_id != rule_id else ""
+        )
+
+    @rx.var(cache=True)
+    def selected_connection_detail(self) -> list[dict]:
+        """Attribute mappings for the selected connection's rule."""
+        if not self.selected_connection_rule_id or not self.mapping_spec:
+            return []
+        for rule in self.mapping_spec.get("rules", []):
+            if rule.get("rule_id") == self.selected_connection_rule_id:
+                result = []
+                for am in rule.get("attribute_mappings", []):
+                    result.append({
+                        "mcs_property": am.get("mcs_property", ""),
+                        "otel_attribute": am.get("otel_attribute", ""),
+                        "transform": am.get("transform", "direct"),
+                    })
+                return result
+        return []
+
+    @rx.var(cache=True)
+    def selected_connection_rule_name(self) -> str:
+        """Name of the selected connection's rule."""
+        if not self.selected_connection_rule_id or not self.mapping_spec:
+            return ""
+        for rule in self.mapping_spec.get("rules", []):
+            if rule.get("rule_id") == self.selected_connection_rule_id:
+                return rule.get("rule_name", rule.get("rule_id", ""))
+        return ""
 
     def select_rule(self, rule_id: str):
         """Select a rule for editing."""
@@ -485,7 +754,10 @@ class MappingMixin(rx.State, mixin=True):
                 "otel_target": rule.otel_operation_name.value,
                 "rule_id": rule.rule_id,
             })
-        self.flow_edges = _build_flow_edges(self.connections)
+        self.flow_edges = _build_flow_edges(
+            self.connections,
+            [r.model_dump() for r in spec.rules] if spec.rules else None,
+        )
 
     def load_defaults(self):
         """Populate from config/default_mapping.json, also populate connections and flow edges."""

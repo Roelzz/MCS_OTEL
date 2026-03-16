@@ -38,6 +38,52 @@ def _import_dialog() -> rx.Component:
     )
 
 
+def _connection_detail_row(am: dict) -> rx.Component:
+    return rx.hstack(
+        rx.text(am["mcs_property"], size="2", font_family="JetBrains Mono", color="var(--blue-11)"),
+        rx.icon("arrow-right", size=14, color="var(--gray-8)"),
+        rx.text(am["otel_attribute"], size="2", font_family="JetBrains Mono"),
+        rx.badge(am["transform"], size="1", variant="outline"),
+        spacing="2",
+        width="100%",
+        padding_y="2px",
+    )
+
+
+def _connection_detail() -> rx.Component:
+    return rx.cond(
+        State.selected_connection_rule_id != "",
+        rx.card(
+            rx.vstack(
+                rx.hstack(
+                    rx.icon("link", size=16, color="var(--green-9)"),
+                    rx.text(State.selected_connection_rule_name, weight="bold", size="3"),
+                    rx.spacer(),
+                    rx.badge(
+                        rx.text(State.selected_connection_detail.length(), size="1"),  # type: ignore
+                        " attrs",
+                        size="1",
+                        variant="soft",
+                    ),
+                    width="100%",
+                ),
+                rx.cond(
+                    State.selected_connection_detail.length() > 0,  # type: ignore
+                    rx.vstack(
+                        rx.foreach(State.selected_connection_detail, _connection_detail_row),
+                        spacing="1",
+                        width="100%",
+                    ),
+                    rx.text("No attribute mappings", size="2", color="var(--gray-9)"),
+                ),
+                spacing="2",
+                width="100%",
+            ),
+            width="100%",
+        ),
+    )
+
+
 def connection_view() -> rx.Component:
     return rx.vstack(
         rx.hstack(
@@ -57,6 +103,7 @@ def connection_view() -> rx.Component:
                 initial_edges=State.flow_edges,
                 on_connect_edge=State.on_flow_connect,
                 on_delete_edge=State.on_flow_edge_delete,
+                on_edge_click=State.select_connection_rule,
             ),
             width="100%",
             min_height="500px",
@@ -68,10 +115,11 @@ def connection_view() -> rx.Component:
         ),
         rx.text(
             "Drag from MCS entity handle (right) to OTEL target handle (left) to create connections. "
-            "Select an edge and press Delete/Backspace to remove it.",
+            "Select an edge and press Delete/Backspace to remove it. Click an edge to inspect its mapping.",
             size="1",
             color="var(--gray-9)",
         ),
+        _connection_detail(),
         spacing="3",
         width="100%",
         padding="1em",
