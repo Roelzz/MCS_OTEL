@@ -14,8 +14,6 @@ from web.components import (
     event_registry,
     improve_page,
 )
-from web.components.span_tree import span_detail as _span_detail_import
-from web.components.timeline import timeline_view
 from web.state import State  # noqa: F401 — must import so Reflex registers state
 
 _BODY_FONT = "Outfit, sans-serif"
@@ -49,7 +47,6 @@ def index_page() -> rx.Component:
                     rx.tabs.trigger("Session", value="session"),
                     rx.tabs.trigger("Entities", value="entities"),
                     rx.tabs.trigger("Rule Graph", value="rule_graph"),
-                    rx.tabs.trigger("Timeline", value="timeline"),
                     rx.tabs.trigger("Registry", value="registry"),
                     size="2",
                 ),
@@ -66,26 +63,6 @@ def index_page() -> rx.Component:
                 ),
                 rx.tabs.content(entity_browser(), value="entities"),
                 rx.tabs.content(rule_hierarchy(), value="rule_graph"),
-                rx.tabs.content(
-                    rx.vstack(
-                        rx.hstack(
-                            rx.heading("Timeline", size="4"),
-                            rx.spacer(),
-                            rx.button(
-                                "Refresh",
-                                on_click=State.refresh_preview,
-                                size="2",
-                                variant="outline",
-                            ),
-                        ),
-                        timeline_view(),
-                        _span_detail_import(),
-                        spacing="3",
-                        width="100%",
-                        padding="1em",
-                    ),
-                    value="timeline",
-                ),
                 rx.tabs.content(event_registry(), value="registry"),
                 default_value="overview",
                 width="100%",

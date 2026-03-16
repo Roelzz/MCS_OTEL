@@ -1,18 +1,26 @@
 # MCS-OTEL
 
-Converts Microsoft Copilot Studio conversation transcripts into OpenTelemetry-compatible traces and spans for observability. Upload a transcript JSON, visually map MCS entities to OTEL attributes, preview the span tree, and export OTLP JSON.
+Converts Microsoft Copilot Studio conversation transcripts into OpenTelemetry-compatible traces and spans for observability. Multi-tab dashboard for uploading transcripts, visually mapping MCS entities to OTEL attributes, previewing span trees, browsing sessions and entities, inspecting rule hierarchies, and exporting OTLP JSON.
 
 ## Features
 
-- Upload MCS transcript JSON or Dataverse CSV (dialog.json / Dataverse export / Rex format)
-- Visual ETL mapping UI (React Flow) — drag-and-drop MCS entities to OTEL targets
+**Overview tab** — upload MCS transcript JSON or Dataverse CSV, visual ETL mapping (React Flow), live span tree preview with clickable inspector, error correlation, and OTLP JSON export
+
+**Session tab** — session dashboard with conversation chat view
+
+**Entities tab** — entity browser for exploring extracted MCS entities
+
+**Rule Graph tab** — rule hierarchy visualization with per-attribute fill rate bars and per-rule match stats
+
+**Registry tab** — event registry with attribute mappings visible on rule cards
+
+**Improve page** (`/improve`) — self-learning improvement engine with guided apply workflow and diff preview
+
+**Core:**
 - Config-driven mapping — all rules, attributes, and descriptions in `config/default_mapping.json`
 - 28 default mapping rules covering 26 event types
 - Full OTLP compliance (Client SpanKind for root, UNSET status codes)
 - Deep support for MCP, AI Builder, and Knowledge Retrieval tracing
-- Live span tree preview with clickable span inspector and OTLP JSON export
-- Attribute mappings visible on rule cards with per-rule match stats
-- Self-learning improvement engine (`improve.py`) with guided apply workflow and diff preview
 
 ## Quick Start
 
@@ -34,22 +42,29 @@ MCS_OTEL/
 ├── converter.py             # Entity → OTEL span mapping, OTLP JSON export (config-driven)
 ├── otel_registry.py         # OTEL attribute definitions across 10 categories
 ├── config_loader.py         # Loads and validates mapping config from JSON
+├── log.py                   # Shared loguru logging configuration
+├── utils.py                 # Shared utility functions
 ├── analyze_transcripts.py   # CLI: transcript coverage analysis
 ├── improve.py               # Self-learning improvement engine (outputs config updates)
 ├── pyproject.toml           # Project config and dependencies
 ├── web/
 │   ├── web.py               # Reflex frontend layout + /improve route
-│   ├── components/          # UI components (upload, mapping editor, span tree, export, improve dashboard)
+│   ├── components/          # UI: upload, mapping_editor, react_flow, span_tree, export,
+│   │                        #   session_dashboard, conversation_view, entity_browser,
+│   │                        #   rule_hierarchy, event_registry, connection_view,
+│   │                        #   navbar, improve_dashboard
 │   └── state/               # Reflex state managers (upload, mapping, preview, improve)
 ├── config/
 │   └── default_mapping.json # Single source of truth for all mapping rules, attributes, and metadata
 ├── tests/
-│   ├── test_parsers.py      # Parser unit tests
-│   ├── test_models.py       # Model unit tests
-│   ├── test_converter.py    # Converter unit tests
-│   ├── test_enrichment.py   # Entity enrichment tests
-│   ├── test_improve.py      # Improvement engine tests
-│   └── fixtures/            # Sample transcript JSON + CSV files
+│   ├── test_parsers.py            # Parser unit tests
+│   ├── test_models.py             # Model unit tests
+│   ├── test_converter.py          # Converter unit tests
+│   ├── test_enrichment.py         # Entity enrichment tests
+│   ├── test_improve.py            # Improvement engine tests
+│   ├── test_config_loader.py      # Config loader unit tests
+│   ├── test_analyze_transcripts.py # Transcript analysis CLI tests
+│   └── fixtures/                  # Sample transcript JSON + CSV files
 └── docs/
     ├── gap-analysis.md            # Capability gap analysis (42 capabilities)
     └── transcript_analysis.md     # Generated: valueType coverage report

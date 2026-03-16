@@ -15,7 +15,6 @@ class PreviewMixin(rx.State, mixin=True):
     selected_span_id: str = ""
     span_filter_text: str = ""
     preview_loading: bool = False
-    span_view_mode: str = "tree"  # "tree" or "timeline"
     # Per-rule match stats after preview
     _rule_stats: list[dict] = []
     _cached_otlp: str = ""
@@ -124,50 +123,6 @@ class PreviewMixin(rx.State, mixin=True):
                 return s.get("attr_fill_detail", [])
         return []
 
-    @rx.var(cache=True)
-    def timeline_data(self) -> list[dict]:
-        """Span data formatted for timeline/Gantt view."""
-        if not self.preview_spans:
-            return []
-        # Find root start time for relative offsets
-        root_start = 0
-        for s in self.preview_spans:
-            if s.get("depth", 0) == 0 and not s.get("is_event", False):
-                root_start = s.get("start_time_ns", 0)
-                break
-
-        result = []
-        for s in self.preview_spans:
-            if s.get("is_event", False):
-                continue
-            start_ns = s.get("start_time_ns", 0)
-            end_ns = s.get("end_time_ns", 0)
-            offset_ms = (start_ns - root_start) / 1_000_000 if root_start else 0
-            dur_ms = (end_ns - start_ns) / 1_000_000
-            # Get color from operation name
-            op_name = s.get("attributes", {}).get("gen_ai.operation.name", "")
-            from web.state._mapping import OTEL_TARGET_COLORS
-            color = OTEL_TARGET_COLORS.get(op_name, "#6b7280")
-            result.append({
-                "name": s.get("name", ""),
-                "span_id": s.get("span_id", ""),
-                "start_offset_ms": round(offset_ms, 1),
-                "duration_ms": round(dur_ms, 1),
-                "depth": s.get("depth", 0),
-                "color": color,
-                "child_count": s.get("child_count", 0),
-                "duration_display": s.get("duration_display", ""),
-            })
-        return result
-
-    @rx.var(cache=True)
-    def timeline_max_ms(self) -> float:
-        """Total trace duration for timeline scaling."""
-        return self.preview_duration_ms if self.preview_duration_ms > 0 else 1.0
-
-    def set_span_view_mode(self, mode: str):
-        self.span_view_mode = mode
-
     def refresh_preview(self):
         """Apply mapping to entities, flatten tree, update state."""
         self.preview_loading = True
@@ -255,11 +210,9 @@ class PreviewMixin(rx.State, mixin=True):
                 "status": span.status,
                 "child_count": len(span.children),
                 "is_event": False,
-                "is_point_event": dur_ms == 0,
                 "event_count": len(span.events),
                 "rule_id": rule_id,
                 "index": 0,
-                "start_offset_ms": 0.0,
             }
         ]
         # Show events on this span (indented one level deeper)
@@ -277,23 +230,17 @@ class PreviewMixin(rx.State, mixin=True):
                 "status": "OK",
                 "child_count": 0,
                 "is_event": True,
-                "is_point_event": True,
                 "event_count": 0,
                 "rule_id": "",
                 "index": 0,
-                "start_offset_ms": 0.0,
             })
         for child in span.children:
             result.extend(self._flatten_tree(child, depth + 1))
 
-        # Assign index and start_offset_ms (only at top-level call, depth==0)
+        # Assign index for zebra striping (only at top-level call, depth==0)
         if depth == 0:
-            trace_start_ns = result[0]["start_time_ns"] if result else 0
             for i, item in enumerate(result):
                 item["index"] = i
-                item["start_offset_ms"] = (
-                    (item["start_time_ns"] - trace_start_ns) / 1_000_000
-                )
 
         return result
 
