@@ -11,6 +11,7 @@ class PreviewMixin(rx.State, mixin=True):
     preview_trace_id: str = ""
     preview_total_spans: int = 0
     preview_duration_ms: float = 0.0
+    preview_total_events: int = 0
     selected_span_id: str = ""
     # Per-rule match stats after preview
     _rule_stats: list[dict] = []
@@ -59,6 +60,9 @@ class PreviewMixin(rx.State, mixin=True):
 
             # Flatten tree with depth metadata
             self.preview_spans = self._flatten_tree(trace.root_span, 0)
+            self.preview_total_events = sum(
+                1 for s in self.preview_spans if s.get("is_event")
+            )
 
             # Compute per-rule match stats
             self._rule_stats = self._compute_rule_stats(spec, self.preview_spans)
@@ -77,12 +81,21 @@ class PreviewMixin(rx.State, mixin=True):
         if op_name and self.mapping_spec:
             for rule in self.mapping_spec.get("rules", []):
                 if rule.get("otel_operation_name") == op_name:
-                    vt = rule.get("mcs_value_type", "")
                     # Match by span name heuristic
                     tpl = rule.get("span_name_template", "")
                     if tpl and span.name.startswith(tpl.split("{")[0].strip()):
                         rule_id = rule.get("rule_id", "")
                         break
+
+        dur_ms = (span.end_time_ns - span.start_time_ns) / 1_000_000
+        if dur_ms == 0:
+            dur_display = "—"
+        elif dur_ms < 1:
+            dur_display = "< 1 ms"
+        elif dur_ms >= 1000:
+            dur_display = f"{dur_ms / 1000:.1f}s"
+        else:
+            dur_display = f"{dur_ms:.0f} ms"
 
         result = [
             {
@@ -93,7 +106,8 @@ class PreviewMixin(rx.State, mixin=True):
                 else str(span.kind),
                 "start_time_ns": span.start_time_ns,
                 "end_time_ns": span.end_time_ns,
-                "duration_ms": (span.end_time_ns - span.start_time_ns) / 1_000_000,
+                "duration_ms": dur_ms,
+                "duration_display": dur_display,
                 "depth": depth,
                 "attributes": span.attributes,
                 "status": span.status,
@@ -101,6 +115,7 @@ class PreviewMixin(rx.State, mixin=True):
                 "is_event": False,
                 "event_count": len(span.events),
                 "rule_id": rule_id,
+                "index": 0,
             }
         ]
         # Show events on this span (indented one level deeper)
@@ -112,6 +127,7 @@ class PreviewMixin(rx.State, mixin=True):
                 "start_time_ns": evt.get("timeUnixNano", 0),
                 "end_time_ns": evt.get("timeUnixNano", 0),
                 "duration_ms": 0.0,
+                "duration_display": "—",
                 "depth": depth + 1,
                 "attributes": evt.get("attributes", {}),
                 "status": "OK",
@@ -119,9 +135,16 @@ class PreviewMixin(rx.State, mixin=True):
                 "is_event": True,
                 "event_count": 0,
                 "rule_id": "",
+                "index": 0,
             })
         for child in span.children:
             result.extend(self._flatten_tree(child, depth + 1))
+
+        # Assign index for zebra striping (only at top-level call, depth==0)
+        if depth == 0:
+            for i, item in enumerate(result):
+                item["index"] = i
+
         return result
 
     def _compute_rule_stats(
@@ -130,9 +153,12 @@ class PreviewMixin(rx.State, mixin=True):
         """Compute per-rule match count and attribute fill rate."""
         stats: list[dict] = []
         for rule in spec.rules:
-            rule_dict = rule.model_dump()
             rule_id = rule.rule_id
-            op_name = rule.otel_operation_name.value if hasattr(rule.otel_operation_name, "value") else str(rule.otel_operation_name)
+            op_name = (
+                rule.otel_operation_name.value
+                if hasattr(rule.otel_operation_name, "value")
+                else str(rule.otel_operation_name)
+            )
             tpl_prefix = rule.span_name_template.split("{")[0].strip() if rule.span_name_template else ""
 
             # Count matching spans

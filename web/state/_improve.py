@@ -22,7 +22,6 @@ class ImproveMixin(rx.State, mixin=True):
     improve_progress: str = ""
     iterations: list[dict] = []
     pending_review: list[dict] = []
-    code_export: dict[str, str] = {}
     # Proposed spec from generate_spec_changes
     _proposed_spec: dict = {}
 
@@ -70,11 +69,6 @@ class ImproveMixin(rx.State, mixin=True):
             }
             for i, it in enumerate(self.iterations)
         ]
-
-    @rx.var
-    def code_export_list(self) -> list[dict]:
-        """Convert code_export dict to list for rx.foreach."""
-        return [{"file": k, "code": v} for k, v in self.code_export.items()]
 
     @rx.var
     def has_pending(self) -> bool:
@@ -159,7 +153,6 @@ class ImproveMixin(rx.State, mixin=True):
         self.improve_progress = "Starting improvement loop..."
         self.iterations = []
         self.pending_review = []
-        self.code_export = {}
         yield
 
         try:
@@ -233,7 +226,7 @@ class ImproveMixin(rx.State, mixin=True):
                 value_type=finding.get("value_type", ""),
                 property_name=finding.get("property_name", ""),
                 sample_value=finding.get("sample_value", {}),
-                code_snippet=finding.get("code_snippet", ""),
+                suggested_config=finding.get("suggested_config", {}),
             )
             updated = improve_mod.generate_spec_changes([], [accepted], current)
             self._proposed_spec = updated.model_dump()
@@ -330,7 +323,6 @@ class ImproveMixin(rx.State, mixin=True):
         self.improve_progress = ""
         self.iterations = []
         self.pending_review = []
-        self.code_export = {}
         self._proposed_spec = {}
         self.apply_results = {}
         self.apply_diff = ""

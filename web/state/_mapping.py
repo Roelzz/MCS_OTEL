@@ -181,26 +181,47 @@ class MappingMixin(rx.State, mixin=True):
     selected_rule_id: str = ""
     selected_mcs_entity: str = ""  # Currently clicked MCS entity in connection view
     connections: list[dict] = []  # [{mcs_entity_type, otel_target, rule_id}]
+    _collapsed_rules: set[str] = set()
 
     # React Flow state
     flow_nodes: list[dict] = DEFAULT_FLOW_NODES
     flow_edges: list[dict] = []
 
+    def toggle_rule_collapse(self, rule_id: str):
+        if rule_id in self._collapsed_rules:
+            self._collapsed_rules.discard(rule_id)
+        else:
+            self._collapsed_rules.add(rule_id)
+
+    def collapse_all_rules(self):
+        if self.mapping_spec and "rules" in self.mapping_spec:
+            self._collapsed_rules = {
+                r.get("rule_id", "") for r in self.mapping_spec["rules"]
+            }
+
+    def expand_all_rules(self):
+        self._collapsed_rules = set()
+
     @rx.var(cache=True)
     def mapping_rules(self) -> list[dict]:
         """Return the rules list from mapping_spec for foreach iteration.
 
-        Adds attr_count and attr_summary fields for display since Reflex
-        cannot foreach over nested untyped dicts.
+        Adds attr_count, attr_summary, description, is_collapsed, and
+        inline stat fields for display.
         """
         if not self.mapping_spec or "rules" not in self.mapping_spec:
             return []
+
+        # Build stat lookup from _rule_stats (set by PreviewMixin)
+        stat_map: dict[str, dict] = {}
+        for s in getattr(self, "_rule_stats", []):
+            stat_map[s.get("rule_id", "")] = s
+
         rules = []
         for rule in self.mapping_spec["rules"]:
             r = {**rule}
             mappings = rule.get("attribute_mappings", [])
             r["attr_count"] = len(mappings)
-            # Build compact summary: "mcs_prop → otel_attr" per line
             lines = []
             for am in mappings:
                 mcs = am.get("mcs_property", "")
@@ -209,6 +230,13 @@ class MappingMixin(rx.State, mixin=True):
                 suffix = f"  [{transform}]" if transform != "direct" else ""
                 lines.append(f"{mcs}  →  {otel}{suffix}")
             r["attr_summary"] = "\n".join(lines) if lines else ""
+            r["description"] = rule.get("description", "")
+            r["is_collapsed"] = rule.get("rule_id", "") in self._collapsed_rules
+
+            # Merge inline stats
+            st = stat_map.get(rule.get("rule_id", ""), {})
+            r["stat_match_count"] = st.get("match_count", -1)
+            r["stat_fill_rate"] = st.get("fill_rate", -1.0)
             rules.append(r)
         return rules
 

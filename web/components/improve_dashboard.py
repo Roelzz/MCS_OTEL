@@ -1,5 +1,7 @@
 """Improvement dashboard component — visual reporting for the mapper improvement loop."""
 
+import json
+
 import reflex as rx
 
 from web.state import State
@@ -396,44 +398,14 @@ def _review_item(finding: dict) -> rx.Component:
                 width="100%",
             ),
             rx.code_block(
-                finding["code_snippet"].to(str),
-                language="python",
+                finding["suggested_config_display"],
+                language="json",
             ),
             spacing="2",
         ),
         width="100%",
     )
 
-
-def _code_export() -> rx.Component:
-    """Collapsible sections per target file showing generated code."""
-    return rx.cond(
-        State.code_export_list.length() > 0,
-        rx.vstack(
-            rx.heading("Code Export", size="3"),
-            rx.text(
-                "Generated code changes ready to apply to source files.",
-                size="2",
-                color_scheme="gray",
-            ),
-            rx.foreach(
-                State.code_export_list,
-                _code_section,
-            ),
-            spacing="3",
-            width="100%",
-        ),
-    )
-
-
-def _code_section(item: dict) -> rx.Component:
-    """Single code section for a file."""
-    return rx.box(
-        rx.text(item["file"].to(str), weight="bold", size="2"),
-        rx.code_block(item["code"].to(str), language="python"),
-        width="100%",
-        padding_bottom="1em",
-    )
 
 
 def _apply_section() -> rx.Component:
@@ -695,7 +667,6 @@ def improve_dashboard() -> rx.Component:
                 _iteration_timeline(),
                 _coverage_chart(),
                 _pending_review(),
-                _code_export(),
                 _apply_section(),
                 spacing="4",
                 width="100%",
@@ -719,7 +690,6 @@ def improve_dashboard() -> rx.Component:
                 _iteration_timeline(),
                 _coverage_chart(),
                 _pending_review(),
-                _code_export(),
                 _post_apply(),
                 spacing="4",
                 width="100%",

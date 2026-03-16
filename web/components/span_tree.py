@@ -7,10 +7,12 @@ def _span_row(span: rx.Var[dict]) -> rx.Component:
     """Single span or event row in the tree."""
     depth = span["depth"].to(int)
     name = span["name"].to(str)
-    duration = span["duration_ms"].to(float)
     child_count = span["child_count"].to(int)
     span_id = span["span_id"].to(str)
     is_event = span["is_event"].to(bool)
+    status = span["status"].to(str)
+    dur_display = span["duration_display"].to(str)
+    row_index = span["index"].to(int)
 
     return rx.hstack(
         # Indentation based on depth
@@ -68,7 +70,7 @@ def _span_row(span: rx.Var[dict]) -> rx.Component:
             ),
             rx.fragment(),
         ),
-        # Duration (only for spans)
+        # Duration
         rx.cond(
             is_event,
             rx.text(
@@ -78,7 +80,7 @@ def _span_row(span: rx.Var[dict]) -> rx.Component:
                 font_family="JetBrains Mono, monospace",
             ),
             rx.text(
-                duration.to(str) + " ms",
+                dur_display,
                 size="1",
                 color="var(--gray-9)",
                 font_family="JetBrains Mono, monospace",
@@ -91,10 +93,15 @@ def _span_row(span: rx.Var[dict]) -> rx.Component:
         cursor="pointer",
         on_click=State.select_span(span_id),
         border_radius="var(--radius-1)",
+        border_left=rx.cond(
+            status == "ERROR",
+            "3px solid var(--red-9)",
+            rx.cond(status == "OK", "3px solid var(--green-a5)", "3px solid transparent"),
+        ),
         background=rx.cond(
             State.selected_span_id == span_id,
             "var(--green-a3)",
-            "transparent",
+            rx.cond(row_index % 2 == 0, "var(--gray-a2)", "transparent"),
         ),
         _hover={"background": "var(--gray-a3)"},
     )
@@ -153,6 +160,15 @@ def _span_detail() -> rx.Component:
                         color_scheme="blue",
                         size="1",
                     ),
+                    rx.badge(
+                        detail["status"].to(str),
+                        color_scheme=rx.cond(
+                            detail["status"].to(str) == "ERROR",
+                            "red",
+                            rx.cond(detail["status"].to(str) == "OK", "green", "gray"),
+                        ),
+                        size="1",
+                    ),
                     rx.cond(
                         detail["rule_id"].to(str) != "",
                         rx.badge(
@@ -166,19 +182,25 @@ def _span_detail() -> rx.Component:
                     align="center",
                     width="100%",
                 ),
+                # IDs with copy buttons
+                rx.hstack(
+                    rx.text("Span ID: ", size="1", color="var(--gray-9)"),
+                    rx.code(detail["span_id"].to(str), size="1"),
+                    rx.icon_button(
+                        rx.icon("copy", size=12),
+                        size="1",
+                        variant="ghost",
+                        on_click=rx.set_clipboard(detail["span_id"].to(str)),
+                    ),
+                    spacing="2",
+                    align="center",
+                ),
                 # Timing info
                 rx.hstack(
                     rx.badge(
-                        detail["duration_ms"].to(str),
-                        " ms",
+                        detail["duration_display"].to(str),
                         color_scheme="green",
                         size="1",
-                    ),
-                    rx.text(
-                        "Status: ",
-                        detail["status"].to(str),
-                        size="1",
-                        color="var(--gray-9)",
                     ),
                     rx.cond(
                         detail["event_count"].to(int) > 0,
@@ -190,6 +212,15 @@ def _span_detail() -> rx.Component:
                         ),
                     ),
                     spacing="2",
+                ),
+                # Start/end timestamps
+                rx.hstack(
+                    rx.text("Start: ", size="1", color="var(--gray-9)"),
+                    rx.code(detail["start_time_ns"].to(str), size="1"),
+                    rx.text("End: ", size="1", color="var(--gray-9)"),
+                    rx.code(detail["end_time_ns"].to(str), size="1"),
+                    spacing="2",
+                    align="center",
                 ),
                 # Attributes table
                 rx.cond(
@@ -230,8 +261,20 @@ def _span_detail() -> rx.Component:
     )
 
 
+def _format_duration(ms: rx.Var) -> rx.Component:
+    """Format duration for the stats bar."""
+    return rx.cond(
+        ms >= 1000,
+        rx.text((ms / 1000).to(int).to(str) + "." + ((ms % 1000) / 100).to(int).to(str) + "s"),
+        rx.text(ms.to(int).to(str) + " ms"),
+    )
+
+
 def span_tree() -> rx.Component:
     """Span tree + timeline panel."""
+    total_events = State.preview_total_events
+    duration_ms = State.preview_duration_ms
+
     return rx.vstack(
         rx.hstack(
             rx.heading("Trace Preview", size="4"),
@@ -249,17 +292,36 @@ def span_tree() -> rx.Component:
             rx.hstack(
                 rx.badge(
                     rx.hstack(
-                        rx.text("Spans: "),
+                        rx.icon("hash", size=12),
+                        rx.text("Trace: "),
+                        rx.text(State.preview_trace_id[:8]),
+                        spacing="1",
+                    ),
+                    color_scheme="gray",
+                    variant="surface",
+                ),
+                rx.badge(
+                    rx.hstack(
+                        rx.icon("layers", size=12),
                         rx.text(State.preview_total_spans),
+                        rx.text(" spans"),
                         spacing="1",
                     ),
                     color_scheme="blue",
                 ),
                 rx.badge(
                     rx.hstack(
-                        rx.text("Duration: "),
-                        rx.text(State.preview_duration_ms),
-                        rx.text(" ms"),
+                        rx.icon("zap", size=12),
+                        rx.text("Events: "),
+                        rx.text(total_events),
+                        spacing="1",
+                    ),
+                    color_scheme="orange",
+                ),
+                rx.badge(
+                    rx.hstack(
+                        rx.icon("clock", size=12),
+                        _format_duration(duration_ms),
                         spacing="1",
                     ),
                     color_scheme="green",
