@@ -295,8 +295,33 @@ class SpanMappingRule(BaseModel):
     attribute_mappings: list[AttributeMapping] = Field(default_factory=list)
 
 
+class EventMetadata(BaseModel):
+    value_type: str
+    tracked: bool = True
+    label: str = ""
+    entity_type: str = ""
+    default_output_type: str = ""
+
+
+class EnrichmentOp(BaseModel):
+    target: str
+    op: str  # extract_path, len, join, join_unique_sorted, json_dump, str_coerce, rename, template, conditional
+    source: str = ""
+    separator: str = ""
+    template: str = ""
+    condition: dict = Field(default_factory=dict)
+
+
+class EnrichmentRule(BaseModel):
+    value_type: str
+    derived_fields: list[EnrichmentOp] = Field(default_factory=list)
+
+
 class MappingSpecification(BaseModel):
     version: str = "1.0"
     name: str = "MCS-to-OTEL GenAI Mapping"
+    description: str = ""
     service_name: str = "copilot-studio"
+    event_metadata: list[EventMetadata] = Field(default_factory=list)
+    enrichment_rules: list[EnrichmentRule] = Field(default_factory=list)
     rules: list[SpanMappingRule] = Field(default_factory=list)

@@ -3,7 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from converter import apply_mapping, generate_default_mapping, to_otlp_json
+from config_loader import load_default_mapping
+from converter import apply_mapping, to_otlp_json
 from models import MappingSpecification, OTELTrace
 from parsers import extract_entities, parse_transcript
 
@@ -21,7 +22,7 @@ def entities():
 
 @pytest.fixture
 def default_spec():
-    return generate_default_mapping()
+    return load_default_mapping()
 
 
 @pytest.fixture

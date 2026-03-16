@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from analyze_transcripts import discover_files, iter_transcripts
-from converter import generate_default_mapping
+from config_loader import load_default_mapping
 from improve import (
     FileAnalysis,
     Finding,
@@ -17,11 +17,11 @@ from improve import (
     apply_auto_fixes,
     classify_findings,
     compute_coverage,
-    generate_code_changes,
+    generate_spec_changes,
     run_improvement_loop,
 )
 from models import AttributeMapping, MappingSpecification, SpanMappingRule
-from parsers import TRACKED_EVENT_TYPES
+from config_loader import load_default_mapping as _load_spec
 
 
 # ---------------------------------------------------------------------------
@@ -37,12 +37,13 @@ def fixtures_dir() -> Path:
 
 @pytest.fixture
 def default_spec() -> MappingSpecification:
-    return generate_default_mapping()
+    return load_default_mapping()
 
 
 @pytest.fixture
 def tracked_types() -> set[str]:
-    return set(TRACKED_EVENT_TYPES)
+    spec = _load_spec()
+    return {em.value_type for em in spec.event_metadata if em.tracked}
 
 
 @pytest.fixture
@@ -336,42 +337,61 @@ class TestComputeCoverage:
         assert fill_rate == pytest.approx(0.5)
 
 
+
 # ---------------------------------------------------------------------------
-# TestGenerateCodeChanges
+# TestGenerateSpecChanges
 # ---------------------------------------------------------------------------
 
 
-class TestGenerateCodeChanges:
-    def test_new_type_generates_all_files(self):
-        """New type should generate changes for parsers, converter, and registry."""
+class TestGenerateSpecChanges:
+    def test_adds_new_type_to_spec(self, default_spec):
+        """New type finding should add EventMetadata + SpanMappingRule."""
         findings = [
             Finding(
                 category="new_type",
                 auto_fixable=True,
-                value_type="FreshEvent",
-                sample_value={"prop1": "val1"},
+                value_type="BrandNewEvent",
+                file_count=5,
+                sample_value={"foo": "bar"},
                 code_snippet="SpanMappingRule(...)",
             )
         ]
-        changes = generate_code_changes(findings, [])
-        assert "parsers.py" in changes
-        assert "converter.py" in changes
-        assert "otel_registry.py" in changes
+        result = generate_spec_changes(findings, [], default_spec)
+        assert len(result.rules) == len(default_spec.rules) + 1
+        assert len(result.event_metadata) == len(default_spec.event_metadata) + 1
+        new_meta = [em for em in result.event_metadata if em.value_type == "BrandNewEvent"]
+        assert len(new_meta) == 1
+        assert new_meta[0].tracked
 
-    def test_new_attribute_generates_converter_and_registry(self):
-        """New attribute should generate changes for converter and registry."""
+    def test_adds_attribute_to_existing_rule(self, default_spec):
+        """New attribute finding should add AttributeMapping."""
         findings = [
             Finding(
                 category="new_attribute",
                 auto_fixable=True,
                 value_type="ErrorTraceData",
                 property_name="newField",
-                code_snippet='AttributeMapping(...)',
             )
         ]
-        changes = generate_code_changes(findings, [])
-        assert "converter.py" in changes
-        assert "otel_registry.py" in changes
+        result = generate_spec_changes(findings, [], default_spec)
+        error_rule = next(r for r in result.rules if r.mcs_value_type == "ErrorTraceData")
+        assert any(am.mcs_property == "newField" for am in error_rule.attribute_mappings)
+
+    def test_idempotent(self, default_spec):
+        """Applying the same changes twice should not duplicate."""
+        findings = [
+            Finding(
+                category="new_type",
+                auto_fixable=True,
+                value_type="IdempotentEvent",
+                file_count=5,
+                sample_value={"p": "v"},
+                code_snippet="SpanMappingRule(...)",
+            )
+        ]
+        result1 = generate_spec_changes(findings, [], default_spec)
+        result2 = generate_spec_changes(findings, [], result1)
+        assert len(result1.rules) == len(result2.rules)
 
 
 # ---------------------------------------------------------------------------
@@ -423,10 +443,9 @@ class TestImprovementLoop:
             output_dir=tmp_output,
         )
         assert tmp_output.exists()
-        # Should have at least one iteration JSON + code_export + improved_mapping
+        # Should have at least one iteration JSON + improved_mapping
         json_files_out = list(tmp_output.glob("iter_*.json"))
         assert len(json_files_out) >= 1
-        assert (tmp_output / "code_export.py").exists()
         assert (tmp_output / "improved_mapping.json").exists()
 
     def test_empty_dir_no_crash(self, tmp_path: Path, tmp_output: Path):
