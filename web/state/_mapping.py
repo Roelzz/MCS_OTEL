@@ -533,6 +533,51 @@ class MappingMixin(rx.State, mixin=True):
         return edges
 
     @rx.var(cache=True)
+    def enrichment_summary(self) -> list[dict]:
+        """Summary of enrichment rules with operation details."""
+        if not self.mapping_spec:
+            return []
+        rules = self.mapping_spec.get("enrichment_rules", [])
+        if not rules:
+            return []
+
+        # Count entities per value_type
+        entity_counts: dict[str, int] = {}
+        for e in getattr(self, "entities", []):
+            vt = e.get("value_type", "")
+            if vt:
+                entity_counts[vt] = entity_counts.get(vt, 0) + 1
+
+        result = []
+        for er in rules:
+            vt = er.get("value_type", "")
+            ops = er.get("derived_fields", [])
+            op_types = list({o.get("op", "") for o in ops})
+            field_names = [o.get("target", "") for o in ops]
+            result.append({
+                "value_type": vt,
+                "op_count": len(ops),
+                "op_types": op_types,
+                "field_names": field_names,
+                "entity_count": entity_counts.get(vt, 0),
+            })
+        return result
+
+    @rx.var(cache=True)
+    def enrichment_target_keys(self) -> list[str]:
+        """All target field names from enrichment rules — used to tag enriched properties."""
+        if not self.mapping_spec:
+            return []
+        rules = self.mapping_spec.get("enrichment_rules", [])
+        targets: list[str] = []
+        for er in rules:
+            for op in er.get("derived_fields", []):
+                t = op.get("target", "")
+                if t and t not in targets:
+                    targets.append(t)
+        return targets
+
+    @rx.var(cache=True)
     def event_metadata_list(self) -> list[dict]:
         """Event metadata enriched with entity counts and rule coverage."""
         if not self.mapping_spec:

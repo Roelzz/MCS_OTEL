@@ -38,17 +38,6 @@ def _overview_tab() -> rx.Component:
     )
 
 
-def _placeholder_tab(name: str) -> rx.Component:
-    return rx.box(
-        rx.callout(
-            f"{name} — coming soon.",
-            icon="construction",
-            size="2",
-        ),
-        padding="2em",
-        width="100%",
-    )
-
 
 def index_page() -> rx.Component:
     return rx.vstack(

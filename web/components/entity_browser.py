@@ -71,13 +71,22 @@ def _entity_row(entity: dict) -> rx.Component:
 
 def _detail_row(prop: dict) -> rx.Component:
     return rx.hstack(
-        rx.text(
-            prop["key"],
-            size="2",
-            font_family="JetBrains Mono",
-            color="var(--blue-11)",
-            min_width="180px",
+        rx.hstack(
+            rx.text(
+                prop["key"],
+                size="2",
+                font_family="JetBrains Mono",
+                color="var(--blue-11)",
+            ),
+            rx.cond(
+                prop["is_enriched"],
+                rx.badge("enriched", size="1", color_scheme="purple", variant="outline"),
+                rx.badge("original", size="1", color_scheme="gray", variant="outline"),
+            ),
+            min_width="220px",
             flex_shrink="0",
+            spacing="1",
+            align="center",
         ),
         rx.text(
             rx.cond(prop["value"] != "", prop["value"], "(empty)"),

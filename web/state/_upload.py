@@ -58,14 +58,19 @@ class UploadMixin(rx.State, mixin=True):
 
     @rx.var
     def selected_entity_detail(self) -> list[dict]:
-        """Flat key-value list of all properties for selected entity."""
+        """Flat key-value list of all properties for selected entity, with enrichment tags."""
         if not self.selected_entity_id or not self.entities:
             return []
+        enriched_keys = set(getattr(self, "enrichment_target_keys", []))
         for e in self.entities:
             if e.get("entity_id") == self.selected_entity_id:
                 props = e.get("properties", {})
                 return [
-                    {"key": k, "value": str(v) if v is not None else ""}
+                    {
+                        "key": k,
+                        "value": str(v) if v is not None else "",
+                        "is_enriched": k in enriched_keys,
+                    }
                     for k, v in sorted(props.items())
                 ]
         return []
