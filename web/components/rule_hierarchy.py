@@ -26,9 +26,9 @@ def rule_hierarchy() -> rx.Component:
                 mapping_flow(
                     initial_nodes=State.rule_hierarchy_nodes,
                     initial_edges=State.rule_hierarchy_edges,
-                    on_connect_edge=lambda _: None,  # type: ignore
-                    on_delete_edge=lambda _: None,  # type: ignore
-                    on_edge_click=lambda _: None,  # type: ignore
+                    on_connect_edge=State.noop_dict,
+                    on_delete_edge=State.noop_str,
+                    on_edge_click=State.noop_str,
                 ),
                 width="100%",
                 min_height="400px",

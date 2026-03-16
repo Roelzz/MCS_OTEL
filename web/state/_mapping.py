@@ -627,6 +627,14 @@ class MappingMixin(rx.State, mixin=True):
             })
         return result
 
+    def noop_dict(self, _data: dict):
+        """No-op handler for dict event specs."""
+        pass
+
+    def noop_str(self, _data: str):
+        """No-op handler for str event specs."""
+        pass
+
     def select_connection_rule(self, rule_id: str):
         """Select a connection edge to show its detail."""
         self.selected_connection_rule_id = (

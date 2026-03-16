@@ -40,7 +40,13 @@ def _event_row(em: rx.Var[dict]) -> rx.Component:
                 color_scheme=rx.cond(ec > 0, "blue", "gray"),
             ),
         ),
-        rx.table.cell(rx.badge(output, size="1", variant="outline") if output else rx.fragment()),
+        rx.table.cell(
+            rx.cond(
+                output != "",
+                rx.badge(output, size="1", variant="outline"),
+                rx.fragment(),
+            ),
+        ),
         rx.table.cell(
             rx.cond(
                 has_rule,
@@ -51,7 +57,7 @@ def _event_row(em: rx.Var[dict]) -> rx.Component:
         rx.table.cell(_status_badge(status)),
         _hover={"background": "var(--gray-a3)"},
         cursor="pointer",
-        on_click=rx.cond(has_rule, State.set_rule_filter_text(vt), rx.noop),  # type: ignore
+        on_click=State.set_rule_filter_text(vt),
     )
 
 

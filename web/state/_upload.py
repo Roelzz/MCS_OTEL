@@ -46,14 +46,19 @@ class UploadMixin(rx.State, mixin=True):
 
     @rx.var(cache=True)
     def filtered_entities(self) -> list[dict]:
-        """Entities filtered by entity_type_filter."""
+        """Entities filtered by entity_type_filter, with pre-computed property_count."""
         if not self.entities:
             return []
-        if not self.entity_type_filter:
-            return self.entities
+        source = self.entities
+        if self.entity_type_filter:
+            source = [
+                e for e in source
+                if (e.get("value_type", "") or e.get("entity_type", "")) == self.entity_type_filter
+            ]
+        # Pre-compute property_count so the component doesn't need to access nested dict
         return [
-            e for e in self.entities
-            if (e.get("value_type", "") or e.get("entity_type", "")) == self.entity_type_filter
+            {**e, "property_count": len(e.get("properties", {}))}
+            for e in source
         ]
 
     @rx.var

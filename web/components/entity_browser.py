@@ -14,7 +14,7 @@ def _type_card(type_info: dict) -> rx.Component:
             ),
             rx.hstack(
                 rx.foreach(
-                    type_info["top_keys"],
+                    type_info["top_keys"].to(list[str]),
                     lambda k: rx.badge(k, size="1", variant="outline", color_scheme="gray"),
                 ),
                 wrap="wrap",
@@ -37,7 +37,7 @@ def _type_card(type_info: dict) -> rx.Component:
 def _entity_row(entity: dict) -> rx.Component:
     eid = entity["entity_id"]
     label = entity["label"]
-    prop_count = entity["properties"].length()  # type: ignore
+    prop_count = entity["property_count"]
     return rx.box(
         rx.hstack(
             rx.vstack(
