@@ -1,6 +1,7 @@
 import json
 import uuid
 
+import pydantic
 import reflex as rx
 
 from config_loader import load_default_mapping
@@ -183,6 +184,7 @@ class MappingMixin(rx.State, mixin=True):
     selected_mcs_entity: str = ""  # Currently clicked MCS entity in connection view
     connections: list[dict] = []  # [{mcs_entity_type, otel_target, rule_id}]
     _collapsed_rules: set[str] = set()
+    _rule_validation_errors: dict[str, str] = {}
     rule_filter_text: str = ""
 
     # React Flow state
@@ -239,6 +241,7 @@ class MappingMixin(rx.State, mixin=True):
             st = stat_map.get(rule.get("rule_id", ""), {})
             r["stat_match_count"] = st.get("match_count", -1)
             r["stat_fill_rate"] = st.get("fill_rate", -1.0)
+            r["validation_error"] = self._rule_validation_errors.get(rule.get("rule_id", ""), "")
             rules.append(r)
 
         if self.rule_filter_text:
@@ -388,6 +391,10 @@ class MappingMixin(rx.State, mixin=True):
 
         self.flow_edges = _build_flow_edges(self.connections)
 
+    @rx.var(cache=True)
+    def rule_validation_errors(self) -> dict[str, str]:
+        return self._rule_validation_errors
+
     def select_rule(self, rule_id: str):
         """Select a rule for editing."""
         self.selected_rule_id = rule_id
@@ -399,8 +406,23 @@ class MappingMixin(rx.State, mixin=True):
             return
         if field == "span_name_template":
             rule["span_name_template"] = value
+            if not value.strip():
+                self._rule_validation_errors[rule_id] = "Span name template cannot be empty"
+            else:
+                self._rule_validation_errors.pop(rule_id, None)
         elif field == "parent_rule_id":
             rule["parent_rule_id"] = value if value else None
+            if value:
+                known_ids = {
+                    r.get("rule_id", "")
+                    for r in (self.mapping_spec or {}).get("rules", [])
+                }
+                if value not in known_ids:
+                    self._rule_validation_errors[rule_id] = f"Unknown parent: {value}"
+                else:
+                    self._rule_validation_errors.pop(rule_id, None)
+            else:
+                self._rule_validation_errors.pop(rule_id, None)
         elif field == "is_root":
             rule["is_root"] = value.lower() == "true"
         elif field == "rule_name":
@@ -476,9 +498,14 @@ class MappingMixin(rx.State, mixin=True):
             self.mapping_spec = spec.model_dump()
             self._rebuild_connections(spec)
             return rx.toast("Mapping imported")
+        except (json.JSONDecodeError, pydantic.ValidationError) as e:
+            from log import logger
+            logger.warning("Invalid mapping JSON: {}", e)
+            return rx.toast.error(f"Invalid mapping: {e}")
         except Exception as e:
             from log import logger
-            logger.error("Failed to import mapping: {}", e)
+            logger.exception("Unexpected error importing mapping")
+            return rx.toast.error(f"Import failed: {e}")
 
     def export_mapping(self) -> str:
         """Export mapping spec as JSON string."""

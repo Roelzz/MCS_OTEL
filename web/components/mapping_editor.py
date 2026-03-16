@@ -92,6 +92,7 @@ def _rule_body(rule: rx.Var[dict]) -> rx.Component:
     attr_count = rule["attr_count"].to(int)
     attr_summary = rule["attr_summary"].to(str)
     description = rule["description"].to(str)
+    validation_error = rule["validation_error"].to(str)
 
     return rx.vstack(
         rx.separator(),
@@ -148,6 +149,14 @@ def _rule_body(rule: rx.Var[dict]) -> rx.Component:
             ),
             rx.text("Root", size="2"),
             width="100%",
+        ),
+        rx.cond(
+            validation_error != "",
+            rx.text(
+                validation_error,
+                size="1",
+                color="var(--red-11)",
+            ),
         ),
         # Attribute mappings heading + add button
         rx.hstack(

@@ -28,8 +28,8 @@ def upload_panel() -> rx.Component:
         rx.text("-- or paste JSON below --", size="2", color="var(--gray-9)"),
         rx.text_area(
             placeholder="Paste transcript JSON here...",
-            value=State.raw_content,
-            on_change=State.set_raw_content,
+            value=State.paste_content,
+            on_change=State.set_paste_content,
             width="100%",
             min_height="120px",
             font_family="JetBrains Mono, monospace",
@@ -37,7 +37,7 @@ def upload_panel() -> rx.Component:
         ),
         rx.button(
             "Parse Transcript",
-            on_click=State.handle_paste(State.raw_content),
+            on_click=State.handle_paste(State.paste_content),
             width="100%",
             color_scheme="green",
         ),

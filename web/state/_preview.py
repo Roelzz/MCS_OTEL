@@ -113,9 +113,15 @@ class PreviewMixin(rx.State, mixin=True):
             # Cache OTLP JSON for export
             otlp = to_otlp_json(trace, spec.service_name)
             self._cached_otlp = json.dumps(otlp, indent=2)
+        except (ValueError, KeyError) as e:
+            from log import logger
+            logger.warning("Preview refresh failed: {}", e)
+            self.preview_spans = []
+            self._rule_stats = []
+            self._cached_otlp = ""
         except Exception as e:
-            from loguru import logger
-            logger.error("Failed to refresh preview: {}", e)
+            from log import logger
+            logger.exception("Unexpected error refreshing preview")
             self.preview_spans = []
             self._rule_stats = []
             self._cached_otlp = ""
