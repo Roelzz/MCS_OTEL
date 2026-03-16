@@ -1,20 +1,12 @@
 import json
-import os
 import re
 import uuid
 from datetime import datetime, timezone
 
 import yaml
-from loguru import logger
 
+from log import logger
 from models import MCSActivity, MCSEntity, MCSTranscript, MappingSpecification, parse_activity_value
-
-logger.remove()
-logger.add(
-    sink=lambda msg: print(msg, end=""),
-    level=os.getenv("LOG_LEVEL", "INFO"),
-    format="{time:DD-MM-YYYY at HH:mm:ss} | {level: <8} | {message}",
-)
 
 ROLE_BOT = 0
 ROLE_USER = 1

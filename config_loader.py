@@ -1,19 +1,10 @@
 """Config loading and saving for MappingSpecification and OTEL attributes."""
 
 import json
-import os
 from pathlib import Path
 
-from loguru import logger
-
+from log import logger
 from models import MappingSpecification
-
-logger.remove()
-logger.add(
-    sink=lambda msg: print(msg, end=""),
-    level=os.getenv("LOG_LEVEL", "INFO"),
-    format="{time:DD-MM-YYYY at HH:mm:ss} | {level: <8} | {message}",
-)
 
 CONFIG_DIR = Path(__file__).parent / "config"
 DEFAULT_MAPPING_PATH = CONFIG_DIR / "default_mapping.json"
