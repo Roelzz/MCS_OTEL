@@ -84,6 +84,36 @@ class PreviewMixin(rx.State, mixin=True):
         return self._rule_stats
 
     @rx.var(cache=True)
+    def error_summary(self) -> list[dict]:
+        """Spans with ERROR status + error events."""
+        if not self.preview_spans:
+            return []
+        error_names = set()
+        if self.mapping_spec:
+            error_names = set(self.mapping_spec.get("error_event_names", ["error", "error_code"]))
+
+        errors: list[dict] = []
+        for s in self.preview_spans:
+            if s.get("status") == "ERROR":
+                attrs = s.get("attributes", {})
+                errors.append({
+                    "span_id": s.get("span_id", ""),
+                    "name": s.get("name", ""),
+                    "error_type": "span_error",
+                    "detail": attrs.get("error.message", attrs.get("error.type", "ERROR")),
+                    "parent_span": "",
+                })
+            if s.get("is_event") and s.get("name", "").lower() in error_names:
+                errors.append({
+                    "span_id": s.get("span_id", ""),
+                    "name": s.get("name", ""),
+                    "error_type": "error_event",
+                    "detail": str(s.get("attributes", {})),
+                    "parent_span": "",
+                })
+        return errors
+
+    @rx.var(cache=True)
     def selected_rule_attr_detail(self) -> list[dict]:
         """Per-attribute fill detail for the selected rule (from mapping editor)."""
         sel = getattr(self, "selected_rule_id", "")

@@ -8,4 +8,5 @@ from web.components.entity_browser import entity_browser
 from web.components.session_dashboard import session_dashboard
 from web.components.conversation_view import conversation_view
 from web.components.rule_hierarchy import rule_hierarchy
+from web.components.event_registry import event_registry
 from web.components.improve_dashboard import improve_dashboard, improve_page

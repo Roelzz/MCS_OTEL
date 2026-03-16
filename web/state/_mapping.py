@@ -532,6 +532,56 @@ class MappingMixin(rx.State, mixin=True):
                 })
         return edges
 
+    @rx.var(cache=True)
+    def event_metadata_list(self) -> list[dict]:
+        """Event metadata enriched with entity counts and rule coverage."""
+        if not self.mapping_spec:
+            return []
+        meta = self.mapping_spec.get("event_metadata", [])
+        if not meta:
+            return []
+
+        # Count entities per value_type
+        entity_counts: dict[str, int] = {}
+        for e in getattr(self, "entities", []):
+            vt = e.get("value_type", "")
+            if vt:
+                entity_counts[vt] = entity_counts.get(vt, 0) + 1
+
+        # Build rule lookup by value_type
+        rule_lookup: dict[str, str] = {}
+        for r in self.mapping_spec.get("rules", []):
+            vt = r.get("mcs_value_type", "")
+            if vt:
+                rule_lookup[vt] = r.get("rule_id", "")
+
+        result = []
+        for em in meta:
+            vt = em.get("value_type", "")
+            ec = entity_counts.get(vt, 0)
+            rid = rule_lookup.get(vt, "")
+            has_rule = bool(rid)
+            # Status: green=entities+rule, orange=entities but no rule, gray=rule but no entities, red=neither
+            if ec > 0 and has_rule:
+                status = "covered"
+            elif ec > 0 and not has_rule:
+                status = "gap"
+            elif ec == 0 and has_rule:
+                status = "unused"
+            else:
+                status = "inactive"
+            result.append({
+                "value_type": vt,
+                "label": em.get("label", vt),
+                "description": em.get("description", ""),
+                "entity_count": ec,
+                "default_output_type": em.get("default_output_type", ""),
+                "has_rule": has_rule,
+                "rule_id": rid,
+                "status": status,
+            })
+        return result
+
     def select_connection_rule(self, rule_id: str):
         """Select a connection edge to show its detail."""
         self.selected_connection_rule_id = (

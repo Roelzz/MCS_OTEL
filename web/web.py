@@ -11,6 +11,7 @@ from web.components import (
     session_dashboard,
     conversation_view,
     rule_hierarchy,
+    event_registry,
     improve_page,
 )
 from web.components.span_tree import span_detail as _span_detail_import
@@ -96,7 +97,7 @@ def index_page() -> rx.Component:
                     ),
                     value="timeline",
                 ),
-                rx.tabs.content(_placeholder_tab("Event Registry"), value="registry"),
+                rx.tabs.content(event_registry(), value="registry"),
                 default_value="overview",
                 width="100%",
             ),
