@@ -42,8 +42,15 @@ class UploadMixin(rx.State, mixin=True):
             self.bot_content = parse_bot_content(text)
             # Re-extract entities with bot_content if transcript is loaded
             if self.transcript:
-                t = parse_transcript(self.raw_content)
-                entities = extract_entities(t, bot_content=self.bot_content)
+                spec = None
+                if self.mapping_spec:
+                    from models import MappingSpecification
+
+                    spec = MappingSpecification(**self.mapping_spec)
+                t = parse_transcript(self.raw_content, spec=spec)
+                entities = extract_entities(
+                    t, bot_content=self.bot_content, spec=spec
+                )
                 self.entities = [e.model_dump() for e in entities]
         except Exception as e:
             self.upload_error = f"botContent error: {e}"
@@ -51,11 +58,18 @@ class UploadMixin(rx.State, mixin=True):
     def _parse_content(self, content: str):
         """Parse transcript content and extract entities."""
         try:
-            t = parse_transcript(content)
+            spec = None
+            if self.mapping_spec:
+                from models import MappingSpecification
+
+                spec = MappingSpecification(**self.mapping_spec)
+            t = parse_transcript(content, spec=spec)
             self.raw_content = content
             self.transcript = t.model_dump()
             entities = extract_entities(
-                t, bot_content=self.bot_content if self.bot_content else None
+                t,
+                bot_content=self.bot_content if self.bot_content else None,
+                spec=spec,
             )
             self.entities = [e.model_dump() for e in entities]
             self.upload_error = ""

@@ -178,6 +178,7 @@ DEFAULT_FLOW_NODES: list[dict] = _build_flow_nodes()
 
 class MappingMixin(rx.State, mixin=True):
     mapping_spec: dict = {}  # Serialized MappingSpecification
+    import_json_text: str = ""
     selected_rule_id: str = ""
     selected_mcs_entity: str = ""  # Currently clicked MCS entity in connection view
     connections: list[dict] = []  # [{mcs_entity_type, otel_target, rule_id}]

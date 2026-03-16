@@ -125,3 +125,274 @@ class TestApplyMappingEdgeCases:
         trace = apply_mapping([], spec)
         assert trace.total_spans == 0
         assert trace.root_span.name == "empty"
+
+
+# ---------------------------------------------------------------------------
+# Event parent timing logic
+# ---------------------------------------------------------------------------
+
+
+class TestEventParentTiming:
+    """Events should attach to the best parent span based on timing."""
+
+    def _make_spec(self, error_event_names: list[str] | None = None) -> MappingSpecification:
+        """Build a minimal spec with a root span rule, child span rule, and event rule."""
+        from models import SpanMappingRule, OTELOperationName, OTELSpanKind
+
+        rules = [
+            SpanMappingRule(
+                rule_id="root",
+                rule_name="Root",
+                mcs_entity_type="trace_event",
+                mcs_value_type="SessionInfo",
+                otel_operation_name=OTELOperationName.invoke_agent,
+                otel_span_kind=OTELSpanKind.SERVER,
+                is_root=True,
+            ),
+            SpanMappingRule(
+                rule_id="turns",
+                rule_name="Turns",
+                mcs_entity_type="turn",
+                otel_operation_name=OTELOperationName.chat,
+                parent_rule_id="root",
+                span_name_template="turn {turn_index}",
+            ),
+            SpanMappingRule(
+                rule_id="errors",
+                rule_name="Errors",
+                mcs_entity_type="trace_event",
+                mcs_value_type="ErrorTraceData",
+                otel_operation_name=OTELOperationName.chat,
+                parent_rule_id="turns",
+                output_type="event",
+                span_name_template="error",
+            ),
+        ]
+        kwargs: dict = {"rules": rules}
+        if error_event_names is not None:
+            kwargs["error_event_names"] = error_event_names
+        return MappingSpecification(**kwargs)
+
+    def _make_entities(self) -> list:
+        """Create entities: 1 session, 2 turns at different times, 1 error event."""
+        from models import MCSEntity
+
+        return [
+            MCSEntity(
+                entity_id="session_1",
+                entity_type="trace_event",
+                label="SessionInfo",
+                value_type="SessionInfo",
+                properties={"conversation_id": "conv1", "timestamp": 1000},
+            ),
+            MCSEntity(
+                entity_id="turn_0",
+                entity_type="turn",
+                label="Turn 0",
+                properties={
+                    "conversation_id": "conv1",
+                    "user_ts": 2000,
+                    "bot_ts": 3000,
+                    "turn_index": "0",
+                },
+            ),
+            MCSEntity(
+                entity_id="turn_1",
+                entity_type="turn",
+                label="Turn 1",
+                properties={
+                    "conversation_id": "conv1",
+                    "user_ts": 5000,
+                    "bot_ts": 6000,
+                    "turn_index": "1",
+                },
+            ),
+            MCSEntity(
+                entity_id="err_1",
+                entity_type="trace_event",
+                label="ErrorTraceData",
+                value_type="ErrorTraceData",
+                properties={"conversation_id": "conv1", "timestamp": 5500},
+            ),
+        ]
+
+    def test_event_attaches_to_best_timed_parent(self):
+        """Error event at ts=5500 should attach to turn_1 (start=5000), not turn_0 (start=2000)."""
+        spec = self._make_spec()
+        entities = self._make_entities()
+        trace = apply_mapping(entities, spec)
+
+        # Find turn spans
+        turn_spans = []
+        for child in trace.root_span.children:
+            if "turn" in child.name:
+                turn_spans.append(child)
+        turn_spans.sort(key=lambda s: s.start_time_ns)
+
+        assert len(turn_spans) == 2
+        # Error event should be on the second turn (later timestamp)
+        turn_1 = turn_spans[1]
+        assert len(turn_1.events) == 1
+        assert turn_1.events[0]["name"] == "error"
+
+        # First turn should have no events
+        turn_0 = turn_spans[0]
+        assert len(turn_0.events) == 0
+
+    def test_event_error_marks_correct_parent(self):
+        """ERROR status should be set on the timing-matched parent, not always the first."""
+        spec = self._make_spec()
+        entities = self._make_entities()
+        trace = apply_mapping(entities, spec)
+
+        turn_spans = []
+        for child in trace.root_span.children:
+            if "turn" in child.name:
+                turn_spans.append(child)
+        turn_spans.sort(key=lambda s: s.start_time_ns)
+
+        # Second turn gets ERROR status
+        assert turn_spans[1].status == "ERROR"
+        # First turn stays UNSET
+        assert turn_spans[0].status == "UNSET"
+
+    def test_event_falls_back_to_root_without_parent(self):
+        """Events with no parent_rule_id should attach to root span."""
+        from models import SpanMappingRule, OTELOperationName, OTELSpanKind, MCSEntity
+
+        spec = MappingSpecification(
+            rules=[
+                SpanMappingRule(
+                    rule_id="root",
+                    mcs_entity_type="trace_event",
+                    mcs_value_type="SessionInfo",
+                    otel_operation_name=OTELOperationName.invoke_agent,
+                    is_root=True,
+                ),
+                SpanMappingRule(
+                    rule_id="orphan_evt",
+                    mcs_entity_type="trace_event",
+                    mcs_value_type="ErrorTraceData",
+                    otel_operation_name=OTELOperationName.chat,
+                    output_type="event",
+                    span_name_template="orphan_error",
+                    # No parent_rule_id
+                ),
+            ],
+        )
+        entities = [
+            MCSEntity(
+                entity_id="s1",
+                entity_type="trace_event",
+                label="SessionInfo",
+                value_type="SessionInfo",
+                properties={"conversation_id": "c1", "timestamp": 1000},
+            ),
+            MCSEntity(
+                entity_id="e1",
+                entity_type="trace_event",
+                label="ErrorTraceData",
+                value_type="ErrorTraceData",
+                properties={"conversation_id": "c1", "timestamp": 2000},
+            ),
+        ]
+        trace = apply_mapping(entities, spec)
+        assert len(trace.root_span.events) == 1
+        assert trace.root_span.events[0]["name"] == "orphan_error"
+
+
+# ---------------------------------------------------------------------------
+# Configurable error event names
+# ---------------------------------------------------------------------------
+
+
+class TestConfigurableErrorEventNames:
+    def test_custom_error_names_mark_status(self):
+        """Custom error_event_names in spec should trigger ERROR status."""
+        from models import SpanMappingRule, OTELOperationName, MCSEntity
+
+        spec = MappingSpecification(
+            error_event_names=["my_custom_error"],
+            rules=[
+                SpanMappingRule(
+                    rule_id="root",
+                    mcs_entity_type="trace_event",
+                    mcs_value_type="SessionInfo",
+                    otel_operation_name=OTELOperationName.invoke_agent,
+                    is_root=True,
+                ),
+                SpanMappingRule(
+                    rule_id="evt",
+                    mcs_entity_type="trace_event",
+                    mcs_value_type="ErrorTraceData",
+                    otel_operation_name=OTELOperationName.chat,
+                    parent_rule_id="root",
+                    output_type="event",
+                    span_name_template="my_custom_error",
+                ),
+            ],
+        )
+        entities = [
+            MCSEntity(
+                entity_id="s1",
+                entity_type="trace_event",
+                label="SessionInfo",
+                value_type="SessionInfo",
+                properties={"conversation_id": "c1", "timestamp": 1000},
+            ),
+            MCSEntity(
+                entity_id="e1",
+                entity_type="trace_event",
+                label="ErrorTraceData",
+                value_type="ErrorTraceData",
+                properties={"conversation_id": "c1", "timestamp": 2000},
+            ),
+        ]
+        trace = apply_mapping(entities, spec)
+        assert trace.root_span.status == "ERROR"
+
+    def test_default_error_names_not_triggered_when_overridden(self):
+        """When error_event_names is overridden, default names should NOT trigger ERROR."""
+        from models import SpanMappingRule, OTELOperationName, MCSEntity
+
+        spec = MappingSpecification(
+            error_event_names=["something_else"],
+            rules=[
+                SpanMappingRule(
+                    rule_id="root",
+                    mcs_entity_type="trace_event",
+                    mcs_value_type="SessionInfo",
+                    otel_operation_name=OTELOperationName.invoke_agent,
+                    is_root=True,
+                ),
+                SpanMappingRule(
+                    rule_id="evt",
+                    mcs_entity_type="trace_event",
+                    mcs_value_type="ErrorTraceData",
+                    otel_operation_name=OTELOperationName.chat,
+                    parent_rule_id="root",
+                    output_type="event",
+                    # This would normally trigger ERROR with default names
+                    span_name_template="error",
+                ),
+            ],
+        )
+        entities = [
+            MCSEntity(
+                entity_id="s1",
+                entity_type="trace_event",
+                label="SessionInfo",
+                value_type="SessionInfo",
+                properties={"conversation_id": "c1", "timestamp": 1000},
+            ),
+            MCSEntity(
+                entity_id="e1",
+                entity_type="trace_event",
+                label="ErrorTraceData",
+                value_type="ErrorTraceData",
+                properties={"conversation_id": "c1", "timestamp": 2000},
+            ),
+        ]
+        trace = apply_mapping(entities, spec)
+        # "error" is NOT in error_event_names=["something_else"], so no ERROR
+        assert trace.root_span.status == "UNSET"

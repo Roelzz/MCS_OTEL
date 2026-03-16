@@ -353,4 +353,7 @@ class MappingSpecification(BaseModel):
     rules: list[SpanMappingRule] = Field(default_factory=list)
     session_info_extraction: list[SessionInfoExtraction] = Field(default_factory=list)
     derived_session_fields: list[DerivedSessionField] = Field(default_factory=list)
+    error_event_names: list[str] = Field(
+        default_factory=lambda: ["error", "error_code"]
+    )
     changelog: list[ChangelogEntry] = Field(default_factory=list)
