@@ -10,8 +10,6 @@ Output: proposed_mapping.json for review. Use 'approve' command to apply.
 """
 
 import json
-import os
-import re
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -19,7 +17,6 @@ from pathlib import Path
 from uuid import uuid4
 
 import typer
-from loguru import logger
 
 from analyze_transcripts import (
     FileStats,
@@ -33,6 +30,7 @@ from analyze_transcripts import (
 )
 from config_loader import load_default_mapping, DEFAULT_MAPPING_PATH
 from converter import apply_mapping, to_otlp_json
+from log import logger
 from models import (
     AttributeMapping,
     EventMetadata,
@@ -41,13 +39,7 @@ from models import (
     SpanMappingRule,
 )
 from parsers import extract_entities, parse_transcript
-
-logger.remove()
-logger.add(
-    sink=lambda msg: print(msg, end=""),
-    level=os.getenv("LOG_LEVEL", "INFO"),
-    format="{time:DD-MM-YYYY at HH:mm:ss} | {level: <8} | {message}",
-)
+from utils import to_snake_case
 
 app = typer.Typer(help="Self-learning mapper improvement engine.")
 
@@ -365,7 +357,7 @@ def apply_auto_fixes(
             ))
 
             # Generate a new rule
-            rule_id = _to_snake_case(finding.value_type)
+            rule_id = to_snake_case(finding.value_type)
             new_rule = SpanMappingRule(
                 rule_id=rule_id,
                 rule_name=finding.value_type,
@@ -401,16 +393,6 @@ def apply_auto_fixes(
             applied.append(finding)
 
     return spec, tracked_types, applied
-
-
-def _to_snake_case(name: str) -> str:
-    """Convert CamelCase to snake_case."""
-    result = []
-    for i, ch in enumerate(name):
-        if ch.isupper() and i > 0:
-            result.append("_")
-        result.append(ch.lower())
-    return "".join(result)
 
 
 def _build_attribute_mappings(sample: dict) -> list[AttributeMapping]:
@@ -492,7 +474,7 @@ def generate_spec_changes(
                 existing_meta_vts.add(vt)
 
             # Add SpanMappingRule
-            rule_id = _to_snake_case(vt)
+            rule_id = to_snake_case(vt)
             new_rule = SpanMappingRule(
                 rule_id=rule_id,
                 rule_name=vt,

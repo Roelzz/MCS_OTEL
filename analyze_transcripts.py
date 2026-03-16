@@ -2,31 +2,33 @@
 
 import csv
 import json
-import os
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
 import typer
-from loguru import logger
 
-from config_loader import load_default_mapping
-from models import OTELOperationName, SpanMappingRule
 from config_loader import load_default_mapping as _load_spec
+from log import logger
+from models import MappingSpecification, OTELOperationName, SpanMappingRule
 from parsers import _resolve_activities, parse_transcript
-
-logger.remove()
-logger.add(
-    sink=lambda msg: print(msg, end=""),
-    level=os.getenv("LOG_LEVEL", "INFO"),
-    format="{time:DD-MM-YYYY at HH:mm:ss} | {level: <8} | {message}",
-)
+from utils import to_snake_case
 
 app = typer.Typer(help="Analyze MCS transcripts for mapping coverage gaps.")
 
-_SPEC = _load_spec()
-TRACKED_EVENT_TYPES = {em.value_type for em in _SPEC.event_metadata if em.tracked}
+_SPEC: MappingSpecification | None = None
+
+
+def _get_spec() -> MappingSpecification:
+    global _SPEC
+    if _SPEC is None:
+        _SPEC = _load_spec()
+    return _SPEC
+
+
+def _tracked_event_types() -> set[str]:
+    return {em.value_type for em in _get_spec().event_metadata if em.tracked}
 
 DEFAULT_SEARCH_DIRS = [
     "tests/fixtures/",
@@ -169,7 +171,7 @@ def aggregate_stats(file_stats_list: list[FileStats]) -> dict[str, ValueTypeStat
             s.total_count += count
             s.file_count += 1
             s.files.append(str(fs.path.name))
-            s.is_tracked = vt in TRACKED_EVENT_TYPES
+            s.is_tracked = vt in _tracked_event_types()
 
             if vt in fs.value_type_props:
                 s.all_properties.update(fs.value_type_props[vt])
@@ -202,16 +204,6 @@ def build_mapping_gap_analysis(
     return stats
 
 
-def _suggest_rule_id(value_type: str) -> str:
-    """Convert CamelCase valueType to snake_case rule_id."""
-    result = []
-    for i, ch in enumerate(value_type):
-        if ch.isupper() and i > 0:
-            result.append("_")
-        result.append(ch.lower())
-    return "".join(result)
-
-
 def _suggest_otel_op(value_type: str) -> OTELOperationName:
     """Heuristic OTEL operation name for a valueType."""
     vt = value_type.lower()
@@ -220,11 +212,11 @@ def _suggest_otel_op(value_type: str) -> OTELOperationName:
     if "plan" in vt or "chain" in vt or "dialog" in vt or "tracing" in vt:
         return OTELOperationName.chain
     if "tool" in vt or "step" in vt or "execute" in vt:
-        return OTELOperationName.tool_execute
+        return OTELOperationName.execute_tool
     if "error" in vt:
         return OTELOperationName.chain
     if "topic" in vt or "redirect" in vt or "intent" in vt:
-        return OTELOperationName.topic_classification
+        return OTELOperationName.intent_recognition
     if "server" in vt or "agent" in vt or "skill" in vt or "mcp" in vt:
         return OTELOperationName.create_agent
     return OTELOperationName.chain
@@ -232,7 +224,7 @@ def _suggest_otel_op(value_type: str) -> OTELOperationName:
 
 def suggest_mapping_rule_json(value_type: str, sample_props: set[str]) -> dict:
     """Generate a SpanMappingRule as a config-compatible JSON dict."""
-    rule_id = _suggest_rule_id(value_type)
+    rule_id = to_snake_case(value_type)
     otel_op = _suggest_otel_op(value_type)
     span_name = rule_id.replace("_", ".")
 
@@ -505,7 +497,7 @@ def main(
 
     # Aggregate and analyze
     stats = aggregate_stats(file_stats_list)
-    mapping_spec = load_default_mapping()
+    mapping_spec = _load_spec()
     stats = build_mapping_gap_analysis(stats, mapping_spec.rules)
 
     # Render report

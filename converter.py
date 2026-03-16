@@ -1,9 +1,7 @@
 import hashlib
-import os
 from collections import defaultdict
 
-from loguru import logger
-
+from log import logger
 from models import (
     AttributeMapping,
     MappingSpecification,
@@ -14,13 +12,6 @@ from models import (
     OTELTrace,
     SpanMappingRule,
     TransformType,
-)
-
-logger.remove()
-logger.add(
-    sink=lambda msg: print(msg, end=""),
-    level=os.getenv("LOG_LEVEL", "INFO"),
-    format="{time:DD-MM-YYYY at HH:mm:ss} | {level: <8} | {message}",
 )
 
 _SPAN_KIND_MAP: dict[OTELSpanKind, int] = {

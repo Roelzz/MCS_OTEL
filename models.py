@@ -235,11 +235,6 @@ class OTELOperationName(str, Enum):
     dialog_redirect = "dialog_redirect"
     intent_recognition = "intent_recognition"
     execute_node = "execute_node"
-    # Keep old values as aliases for backward compat during transition
-    agent_turn = "agent.turn"
-    gen_ai_chat = "gen_ai.chat"
-    tool_execute = "tool.execute"
-    topic_classification = "topic_classification"
 
 
 class OTELSpan(BaseModel):

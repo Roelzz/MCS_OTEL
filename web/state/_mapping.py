@@ -448,27 +448,23 @@ class MappingMixin(rx.State, mixin=True):
             elif field == "transform_value":
                 am["transform_value"] = value
 
+    def _rebuild_connections(self, spec: MappingSpecification):
+        """Rebuild connections and flow edges from a spec's rules."""
+        self.connections = []
+        for rule in spec.rules:
+            mcs_label = rule.mcs_value_type if rule.mcs_value_type else rule.mcs_entity_type
+            self.connections.append({
+                "mcs_entity_type": mcs_label,
+                "otel_target": rule.otel_operation_name.value,
+                "rule_id": rule.rule_id,
+            })
+        self.flow_edges = _build_flow_edges(self.connections)
+
     def load_defaults(self):
         """Populate from config/default_mapping.json, also populate connections and flow edges."""
         spec = load_default_mapping()
         self.mapping_spec = spec.model_dump()
-
-        # Build connections from rules
-        self.connections = []
-        for rule in spec.rules:
-            mcs_label = (
-                rule.mcs_value_type if rule.mcs_value_type else rule.mcs_entity_type
-            )
-            self.connections.append(
-                {
-                    "mcs_entity_type": mcs_label,
-                    "otel_target": rule.otel_operation_name.value,
-                    "rule_id": rule.rule_id,
-                }
-            )
-
-        # Build flow edges from connections
-        self.flow_edges = _build_flow_edges(self.connections)
+        self._rebuild_connections(spec)
         return rx.toast("Default mapping loaded")
 
     def import_mapping(self, json_str: str):
@@ -477,26 +473,10 @@ class MappingMixin(rx.State, mixin=True):
             data = json.loads(json_str)
             spec = MappingSpecification(**data)
             self.mapping_spec = spec.model_dump()
-            # Rebuild connections
-            self.connections = []
-            for rule in spec.rules:
-                mcs_label = (
-                    rule.mcs_value_type
-                    if rule.mcs_value_type
-                    else rule.mcs_entity_type
-                )
-                self.connections.append(
-                    {
-                        "mcs_entity_type": mcs_label,
-                        "otel_target": rule.otel_operation_name.value,
-                        "rule_id": rule.rule_id,
-                    }
-                )
-            # Rebuild flow edges
-            self.flow_edges = _build_flow_edges(self.connections)
+            self._rebuild_connections(spec)
             return rx.toast("Mapping imported")
         except Exception as e:
-            from loguru import logger
+            from log import logger
             logger.error("Failed to import mapping: {}", e)
 
     def export_mapping(self) -> str:

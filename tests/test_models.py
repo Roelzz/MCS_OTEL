@@ -60,10 +60,6 @@ class TestOTELModels:
         assert OTELOperationName.dialog_redirect == "dialog_redirect"
         assert OTELOperationName.intent_recognition == "intent_recognition"
         assert OTELOperationName.execute_node == "execute_node"
-        # Backward compat aliases
-        assert OTELOperationName.agent_turn == "agent.turn"
-        assert OTELOperationName.gen_ai_chat == "gen_ai.chat"
-        assert OTELOperationName.tool_execute == "tool.execute"
 
 
 class TestMappingModels:
@@ -93,7 +89,7 @@ class TestMappingModels:
                     rule_name="Root",
                     mcs_entity_type="trace_event",
                     mcs_value_type="SessionInfo",
-                    otel_operation_name=OTELOperationName.agent_turn,
+                    otel_operation_name=OTELOperationName.invoke_agent,
                     is_root=True,
                     attribute_mappings=[
                         AttributeMapping(mcs_property="outcome", otel_attribute="session.outcome"),
@@ -116,7 +112,7 @@ class TestMappingModels:
                     rule_name="Session Root Span",
                     mcs_entity_type="trace_event",
                     mcs_value_type="SessionInfo",
-                    otel_operation_name=OTELOperationName.agent_turn,
+                    otel_operation_name=OTELOperationName.invoke_agent,
                     otel_span_kind=OTELSpanKind.SERVER,
                     span_name_template="agent.turn {bot_name}",
                     is_root=True,
@@ -127,6 +123,6 @@ class TestMappingModels:
         assert data["version"] == "1.0"
         rule = data["rules"][0]
         assert rule["rule_id"] == "session_root"
-        assert rule["otel_operation_name"] == "agent.turn"
+        assert rule["otel_operation_name"] == "invoke_agent"
         assert rule["otel_span_kind"] == "SERVER"
         assert rule["is_root"] is True
