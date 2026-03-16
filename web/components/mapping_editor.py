@@ -3,6 +3,49 @@ import reflex as rx
 from web.state import State
 
 
+def _attr_mapping_row(am: rx.Var[dict]) -> rx.Component:
+    rule_id = am["rule_id"].to(str)
+    idx = am["idx"].to(int)
+    mcs_prop = am["mcs_property"].to(str)
+    otel_attr = am["otel_attribute"].to(str)
+    transform = am["transform"].to(str)
+
+    return rx.hstack(
+        rx.input(
+            value=mcs_prop,
+            placeholder="mcs_property",
+            size="1",
+            on_change=lambda v: State.update_attribute_mapping(rule_id, idx, "mcs_property", v),
+            flex="1",
+        ),
+        rx.icon("arrow_right", size=12, color="var(--gray-8)"),
+        rx.input(
+            value=otel_attr,
+            placeholder="otel_attribute",
+            size="1",
+            on_change=lambda v: State.update_attribute_mapping(rule_id, idx, "otel_attribute", v),
+            flex="1",
+        ),
+        rx.select(
+            ["direct", "template", "constant", "lookup"],
+            value=transform,
+            size="1",
+            on_change=lambda v: State.update_attribute_mapping(rule_id, idx, "transform", v),
+        ),
+        rx.icon_button(
+            rx.icon("x", size=12),
+            size="1",
+            variant="ghost",
+            color_scheme="red",
+            on_click=State.remove_attribute_mapping(rule_id, idx),
+        ),
+        spacing="1",
+        width="100%",
+        align="center",
+        padding_y="2px",
+    )
+
+
 def _rule_header(rule: rx.Var[dict]) -> rx.Component:
     """Shared header row: chevron + badges + type indicator + delete."""
     rule_id = rule["rule_id"].to(str)
@@ -90,7 +133,6 @@ def _rule_body(rule: rx.Var[dict]) -> rx.Component:
     is_root = rule["is_root"].to(bool)
     output_type = rule["output_type"].to(str)
     attr_count = rule["attr_count"].to(int)
-    attr_summary = rule["attr_summary"].to(str)
     description = rule["description"].to(str)
     validation_error = rule["validation_error"].to(str)
 
@@ -172,23 +214,20 @@ def _rule_body(rule: rx.Var[dict]) -> rx.Component:
             width="100%",
             align="center",
         ),
-        # Attribute mappings summary
         rx.cond(
             attr_count > 0,
-            rx.box(
-                rx.text(
-                    attr_summary,
-                    size="1",
-                    font_family="JetBrains Mono, monospace",
-                    white_space="pre",
+            rx.vstack(
+                rx.foreach(
+                    rule["enriched_attribute_mappings"],
+                    _attr_mapping_row,
                 ),
+                spacing="1",
                 width="100%",
-                padding="0.5em",
                 border="1px solid var(--gray-a3)",
                 border_radius="var(--radius-1)",
-                max_height="200px",
+                padding="0.5em",
+                max_height="250px",
                 overflow_y="auto",
-                background="var(--gray-a2)",
             ),
         ),
         spacing="2",

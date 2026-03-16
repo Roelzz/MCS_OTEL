@@ -234,6 +234,10 @@ class MappingMixin(rx.State, mixin=True):
                 suffix = f"  [{transform}]" if transform != "direct" else ""
                 lines.append(f"{mcs}  →  {otel}{suffix}")
             r["attr_summary"] = "\n".join(lines) if lines else ""
+            enriched_mappings = []
+            for i, am in enumerate(mappings):
+                enriched_mappings.append({**am, "idx": i, "rule_id": rule.get("rule_id", "")})
+            r["enriched_attribute_mappings"] = enriched_mappings
             r["description"] = rule.get("description", "")
             r["is_collapsed"] = rule.get("rule_id", "") in self._collapsed_rules
 
