@@ -4,8 +4,15 @@ from pathlib import Path
 import pytest
 
 from config_loader import load_default_mapping
-from models import EventMetadata, MappingSpecification
-from parsers import extract_entities, parse_transcript
+from models import (
+    DerivedSessionField,
+    EventMetadata,
+    MappingSpecification,
+    MCSActivity,
+    SessionInfoExtraction,
+    SessionInfoFieldMapping,
+)
+from parsers import _extract_session_info, extract_entities, parse_bot_content, parse_transcript
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 TRANSCRIPT_PATH = FIXTURE_DIR / "rex_teams_transcript.json"
@@ -176,3 +183,107 @@ class TestSpecDrivenExtraction:
         entities_with_spec = extract_entities(transcript, spec=spec)
         # Should produce same entity count
         assert len(entities_no_spec) == len(entities_with_spec)
+
+
+# ---------------------------------------------------------------------------
+# parse_bot_content — YAML @ handling
+# ---------------------------------------------------------------------------
+
+
+class TestParseBotContent:
+    def test_unquoted_at_in_yaml(self):
+        """parse_bot_content handles YAML with unquoted @ characters."""
+        yaml_content = (
+            "kind: Bot\n"
+            "entity:\n"
+            "  cdsBotId: test-123\n"
+            "components:\n"
+            "  - kind: GPT\n"
+            "    displayName: @mention tag\n"
+        )
+        result = parse_bot_content(yaml_content)
+        assert result.get("bot_name") == "@mention tag"
+        assert result.get("bot_id") == "test-123"
+
+    def test_normal_yaml(self):
+        """parse_bot_content works with normal YAML."""
+        yaml_content = (
+            "kind: Bot\n"
+            "entity:\n"
+            "  cdsBotId: abc\n"
+            "components:\n"
+            "  - kind: GPT\n"
+            "    displayName: MyBot\n"
+            "    model: gpt-4\n"
+        )
+        result = parse_bot_content(yaml_content)
+        assert result["bot_name"] == "MyBot"
+        assert result["ai_model"] == "gpt-4"
+
+    def test_invalid_yaml_returns_empty(self):
+        """parse_bot_content returns empty dict for unparseable YAML."""
+        result = parse_bot_content("{{invalid yaml: :::}}}")
+        assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# Config-driven _extract_session_info
+# ---------------------------------------------------------------------------
+
+
+class TestConfigDrivenSessionInfo:
+    def test_uses_spec_session_info_extraction(self):
+        """_extract_session_info reads from spec.session_info_extraction when available."""
+        spec = MappingSpecification(
+            session_info_extraction=[
+                SessionInfoExtraction(
+                    source_value_type="SessionInfo",
+                    field_mappings=[
+                        SessionInfoFieldMapping(
+                            source_key="outcome", target_key="outcome", default="None"
+                        ),
+                        SessionInfoFieldMapping(
+                            source_key="turnCount", target_key="turn_count", default=0
+                        ),
+                    ],
+                )
+            ],
+            derived_session_fields=[
+                DerivedSessionField(
+                    target_key="environment",
+                    condition={"field": "is_design_mode", "equals": True},
+                    true_value="design",
+                    false_value="production",
+                )
+            ],
+        )
+        activities = [
+            MCSActivity(
+                id="1",
+                type="trace",
+                timestamp=1000,
+                from_role=0,
+                value_type="SessionInfo",
+                value={"outcome": "Resolved", "turnCount": 5},
+            ),
+        ]
+        result = _extract_session_info(activities, spec=spec)
+        assert result["outcome"] == "Resolved"
+        assert result["turn_count"] == 5
+
+    def test_fallback_without_spec(self):
+        """_extract_session_info falls back to hardcoded logic when spec has no session_info_extraction."""
+        spec = MappingSpecification()
+        activities = [
+            MCSActivity(
+                id="1",
+                type="trace",
+                timestamp=1000,
+                from_role=0,
+                value_type="SessionInfo",
+                value={"outcome": "Abandoned", "type": "Unengaged"},
+            ),
+        ]
+        result = _extract_session_info(activities, spec=spec)
+        assert result["outcome"] == "Abandoned"
+        assert result["session_type"] == "Unengaged"

@@ -13,6 +13,7 @@ from improve import (
     FileAnalysis,
     Finding,
     ImprovementRun,
+    _bump_version,
     analyze_corpus,
     apply_auto_fixes,
     classify_findings,
@@ -195,13 +196,15 @@ class TestClassifyFindings:
         assert len(rare) == 1
         assert not rare[0].auto_fixable
 
-    def test_generates_code_snippets(self, sample_unknown_types, sample_unknown_samples, sample_unmapped_props):
-        """All findings should have non-empty code_snippet."""
+    def test_generates_suggested_config(self, sample_unknown_types, sample_unknown_samples, sample_unmapped_props):
+        """All findings should have non-empty suggested_config."""
         findings = classify_findings(
             sample_unknown_types, sample_unknown_samples, sample_unmapped_props
         )
         for f in findings:
-            assert f.code_snippet, f"Finding for {f.value_type}/{f.property_name} has empty code_snippet"
+            assert isinstance(f.suggested_config, dict) and f.suggested_config, (
+                f"Finding for {f.value_type}/{f.property_name} has empty suggested_config"
+            )
 
     def test_nested_types_need_review(self, nested_unknown_samples):
         """Types with nested structures should be classified as new_enrichment."""
@@ -236,7 +239,7 @@ class TestApplyAutoFixes:
                 value_type="BrandNewEvent",
                 file_count=5,
                 sample_value={"foo": "bar", "baz": "qux"},
-                code_snippet="SpanMappingRule(...)",
+                suggested_config={"rule_id": "test", "mcs_value_type": "BrandNewEvent"},
             )
         ]
         original_count = len(default_spec.rules)
@@ -279,7 +282,7 @@ class TestApplyAutoFixes:
                 value_type="IdempotentEvent",
                 file_count=5,
                 sample_value={"prop": "val"},
-                code_snippet="SpanMappingRule(...)",
+                suggested_config={"rule_id": "test", "mcs_value_type": "IdempotentEvent"},
             )
         ]
 
@@ -299,7 +302,7 @@ class TestApplyAutoFixes:
                 value_type="ComplexEvent",
                 file_count=5,
                 sample_value={"nested": {"data": "value"}},
-                code_snippet="# needs review",
+                suggested_config={},
             )
         ]
         _, _, applied = apply_auto_fixes(findings, default_spec, tracked_types)
@@ -353,7 +356,7 @@ class TestGenerateSpecChanges:
                 value_type="BrandNewEvent",
                 file_count=5,
                 sample_value={"foo": "bar"},
-                code_snippet="SpanMappingRule(...)",
+                suggested_config={"rule_id": "test", "mcs_value_type": "BrandNewEvent"},
             )
         ]
         result = generate_spec_changes(findings, [], default_spec)
@@ -386,7 +389,7 @@ class TestGenerateSpecChanges:
                 value_type="IdempotentEvent",
                 file_count=5,
                 sample_value={"p": "v"},
-                code_snippet="SpanMappingRule(...)",
+                suggested_config={"rule_id": "test", "mcs_value_type": "IdempotentEvent"},
             )
         ]
         result1 = generate_spec_changes(findings, [], default_spec)
@@ -443,10 +446,10 @@ class TestImprovementLoop:
             output_dir=tmp_output,
         )
         assert tmp_output.exists()
-        # Should have at least one iteration JSON + improved_mapping
+        # Should have at least one iteration JSON + proposed_mapping
         json_files_out = list(tmp_output.glob("iter_*.json"))
         assert len(json_files_out) >= 1
-        assert (tmp_output / "improved_mapping.json").exists()
+        assert (tmp_output / "proposed_mapping.json").exists()
 
     def test_empty_dir_no_crash(self, tmp_path: Path, tmp_output: Path):
         """Empty input dir should not crash, just produce empty results."""
@@ -526,3 +529,23 @@ class TestCSVSupport:
             types = {a.get("type") for a in activities}
             assert "trace" in types
             assert "message" in types
+
+
+# ---------------------------------------------------------------------------
+# _bump_version
+# ---------------------------------------------------------------------------
+
+
+class TestBumpVersion:
+    def test_bump_minor(self):
+        assert _bump_version("1.1") == "1.2"
+
+    def test_bump_from_zero(self):
+        assert _bump_version("1.0") == "1.1"
+
+    def test_single_digit(self):
+        assert _bump_version("1") == "1.1"
+
+    def test_non_numeric_suffix(self):
+        result = _bump_version("1.0-beta")
+        assert result  # Should not crash

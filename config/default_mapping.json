@@ -1,5 +1,5 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "name": "MCS-to-OTEL GenAI Mapping",
   "description": "Config-driven mapping from Microsoft Copilot Studio transcripts to OpenTelemetry GenAI spans",
   "service_name": "copilot-studio",
@@ -8,6 +8,7 @@
       "value_type": "AIBuilderTraceData",
       "tracked": true,
       "label": "AI Builder Trace",
+      "description": "Trace data from AI Builder connector actions executed within topics",
       "entity_type": "trace_event",
       "default_output_type": "span"
     },
@@ -15,6 +16,7 @@
       "value_type": "CSATSurveyRequest",
       "tracked": true,
       "label": "CSAT Request",
+      "description": "Customer satisfaction survey prompt sent to the user",
       "entity_type": "trace_event",
       "default_output_type": "span"
     },
@@ -22,6 +24,7 @@
       "value_type": "CSATSurveyResponse",
       "tracked": true,
       "label": "CSAT Response",
+      "description": "Customer satisfaction survey response submitted by the user",
       "entity_type": "trace_event",
       "default_output_type": "event"
     },
@@ -29,6 +32,7 @@
       "value_type": "DialogRedirect",
       "tracked": true,
       "label": "Dialog Redirect",
+      "description": "Topic or dialog routing change triggered by the orchestrator",
       "entity_type": "trace_event",
       "default_output_type": "span"
     },
@@ -36,6 +40,7 @@
       "value_type": "DialogTracingInfo",
       "tracked": true,
       "label": "Dialog Tracing",
+      "description": "Detailed execution trace of dialog actions within a topic",
       "entity_type": "trace_event",
       "default_output_type": "span"
     },
@@ -43,6 +48,7 @@
       "value_type": "DynamicPlanFinished",
       "tracked": true,
       "label": "Plan Finished",
+      "description": "Generative orchestration plan completed or cancelled",
       "entity_type": "trace_event",
       "default_output_type": "span"
     },
@@ -50,6 +56,7 @@
       "value_type": "DynamicPlanReceived",
       "tracked": true,
       "label": "Plan Received",
+      "description": "Generative orchestration plan received with step definitions",
       "entity_type": "trace_event",
       "default_output_type": "span"
     },
@@ -57,6 +64,7 @@
       "value_type": "DynamicPlanReceivedDebug",
       "tracked": true,
       "label": "Plan Received (Debug)",
+      "description": "Debug info for a generative orchestration plan including user ask and summary",
       "entity_type": "trace_event",
       "default_output_type": "span"
     },
@@ -64,6 +72,7 @@
       "value_type": "DynamicPlanStepBindUpdate",
       "tracked": true,
       "label": "Plan Step Bind Update",
+      "description": "Input arguments bound to a plan step before execution",
       "entity_type": "trace_event",
       "default_output_type": "span"
     },
@@ -71,6 +80,7 @@
       "value_type": "DynamicPlanStepBlocked",
       "tracked": true,
       "label": "Plan Step Blocked",
+      "description": "Plan step blocked from execution due to policy or error",
       "entity_type": "trace_event",
       "default_output_type": "span"
     },
@@ -78,6 +88,7 @@
       "value_type": "DynamicPlanStepFinished",
       "tracked": true,
       "label": "Plan Step Finished",
+      "description": "Plan step completed with observation and result data",
       "entity_type": "trace_event",
       "default_output_type": "span"
     },
@@ -85,6 +96,7 @@
       "value_type": "DynamicPlanStepTriggered",
       "tracked": true,
       "label": "Plan Step Triggered",
+      "description": "Plan step triggered by the orchestrator with reasoning",
       "entity_type": "trace_event",
       "default_output_type": "span"
     },
@@ -92,6 +104,7 @@
       "value_type": "DynamicServerInitialize",
       "tracked": true,
       "label": "MCP Server Init",
+      "description": "MCP server connection initialized with server info and capabilities",
       "entity_type": "trace_event",
       "default_output_type": "span"
     },
@@ -99,6 +112,7 @@
       "value_type": "DynamicServerInitializeConfirmation",
       "tracked": true,
       "label": "MCP Server Init Confirmation",
+      "description": "Confirmation that MCP server initialization completed successfully",
       "entity_type": "trace_event",
       "default_output_type": "span"
     },
@@ -106,6 +120,7 @@
       "value_type": "DynamicServerToolsList",
       "tracked": true,
       "label": "MCP Tools List",
+      "description": "List of tools available from a connected MCP server",
       "entity_type": "trace_event",
       "default_output_type": "span"
     },
@@ -113,6 +128,7 @@
       "value_type": "ErrorCode",
       "tracked": true,
       "label": "Error Code",
+      "description": "Error code emitted during conversation processing",
       "entity_type": "trace_event",
       "default_output_type": "event"
     },
@@ -120,6 +136,7 @@
       "value_type": "ErrorTraceData",
       "tracked": true,
       "label": "Error",
+      "description": "Detailed error trace with code, message, and classification",
       "entity_type": "trace_event",
       "default_output_type": "event"
     },
@@ -127,6 +144,7 @@
       "value_type": "ImpliedSuccess",
       "tracked": true,
       "label": "Implied Success",
+      "description": "Auto-detected successful resolution of user intent without explicit confirmation",
       "entity_type": "trace_event",
       "default_output_type": "event"
     },
@@ -134,6 +152,7 @@
       "value_type": "KnowledgeTraceData",
       "tracked": true,
       "label": "Knowledge Trace Data",
+      "description": "Knowledge base search trace with cited sources and completion state",
       "entity_type": "trace_event",
       "default_output_type": "span"
     },
@@ -141,6 +160,7 @@
       "value_type": "PRRSurveyRequest",
       "tracked": true,
       "label": "PRR Request",
+      "description": "Post-resolution rating survey prompt sent to the user",
       "entity_type": "trace_event",
       "default_output_type": "span"
     },
@@ -148,6 +168,7 @@
       "value_type": "PRRSurveyResponse",
       "tracked": true,
       "label": "PRR Response",
+      "description": "Post-resolution rating survey response submitted by the user",
       "entity_type": "trace_event",
       "default_output_type": "event"
     },
@@ -155,6 +176,7 @@
       "value_type": "ProtocolInfo",
       "tracked": true,
       "label": "Protocol Info",
+      "description": "Protocol-level metadata for the conversation channel",
       "entity_type": "trace_event",
       "default_output_type": "span"
     },
@@ -162,6 +184,7 @@
       "value_type": "SkillInfo",
       "tracked": true,
       "label": "Skill Info",
+      "description": "Skill and connector metadata registered for the bot session",
       "entity_type": "trace_event",
       "default_output_type": "span"
     },
@@ -169,6 +192,7 @@
       "value_type": "UniversalSearchToolTraceData",
       "tracked": true,
       "label": "Knowledge Search",
+      "description": "Unified knowledge search results across configured knowledge sources",
       "entity_type": "trace_event",
       "default_output_type": "span"
     },
@@ -176,6 +200,7 @@
       "value_type": "UnknownIntent",
       "tracked": true,
       "label": "Unknown Intent",
+      "description": "User input that could not be matched to any known topic or intent",
       "entity_type": "trace_event",
       "default_output_type": "event"
     },
@@ -183,6 +208,7 @@
       "value_type": "VariableAssignment",
       "tracked": true,
       "label": "Variable Assignment",
+      "description": "Bot variable value change during dialog execution",
       "entity_type": "trace_event",
       "default_output_type": "event"
     },
@@ -190,6 +216,7 @@
       "value_type": "EscalationRequested",
       "tracked": true,
       "label": "Escalation Requested",
+      "description": "Request to escalate the conversation to a human agent",
       "entity_type": "trace_event",
       "default_output_type": "event"
     },
@@ -197,6 +224,7 @@
       "value_type": "HandOff",
       "tracked": true,
       "label": "HandOff",
+      "description": "Transfer of the conversation to a human agent or external system",
       "entity_type": "trace_event",
       "default_output_type": "event"
     }
@@ -791,6 +819,7 @@
     {
       "rule_id": "session_root",
       "rule_name": "Session Root Span",
+      "description": "Creates the root OTEL span for the entire MCS conversation session, capturing bot identity, channel, and session metadata",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "SessionInfo",
       "otel_operation_name": "invoke_agent",
@@ -889,12 +918,19 @@
           "otel_attribute": "mcs.auth.mode",
           "transform": "direct",
           "transform_value": ""
+        },
+        {
+          "mcs_property": "",
+          "otel_attribute": "gen_ai.system",
+          "transform": "constant",
+          "transform_value": "copilot_studio"
         }
       ]
     },
     {
       "rule_id": "user_turn",
       "rule_name": "User-Bot Turn",
+      "description": "Creates a child span for each user-bot interaction turn, capturing input/output messages and topic context",
       "mcs_entity_type": "turn",
       "mcs_value_type": "",
       "otel_operation_name": "chat",
@@ -945,6 +981,7 @@
     {
       "rule_id": "knowledge_search",
       "rule_name": "Knowledge Search",
+      "description": "Maps UniversalSearchToolTraceData to a knowledge.retrieval span with source counts and filtered results",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "UniversalSearchToolTraceData",
       "otel_operation_name": "knowledge.retrieval",
@@ -1007,12 +1044,37 @@
           "otel_attribute": "mcs.knowledge.filtered_result_count",
           "transform": "direct",
           "transform_value": ""
+        },
+        {
+          "mcs_property": "filteredResults",
+          "otel_attribute": "copilot_studio.filteredResults",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "fullResults",
+          "otel_attribute": "copilot_studio.fullResults",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "knowledgeSources",
+          "otel_attribute": "copilot_studio.knowledgeSources",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "outputKnowledgeSources",
+          "otel_attribute": "copilot_studio.outputKnowledgeSources",
+          "transform": "direct",
+          "transform_value": ""
         }
       ]
     },
     {
       "rule_id": "dynamic_plan",
       "rule_name": "Dynamic Plan",
+      "description": "Maps DynamicPlanReceived to a chain span representing a generative orchestration plan with step count and tool definitions",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "DynamicPlanReceived",
       "otel_operation_name": "chain",
@@ -1063,12 +1125,19 @@
           "otel_attribute": "mcs.plan.parent_step_id",
           "transform": "direct",
           "transform_value": ""
+        },
+        {
+          "mcs_property": "isFinalPlan",
+          "otel_attribute": "copilot_studio.isFinalPlan",
+          "transform": "direct",
+          "transform_value": ""
         }
       ]
     },
     {
       "rule_id": "plan_step_bind",
       "rule_name": "Plan Step Bind (Tool Input)",
+      "description": "Maps DynamicPlanStepBindUpdate to a chain span capturing tool input arguments and search parameters before execution",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "DynamicPlanStepBindUpdate",
       "otel_operation_name": "chain",
@@ -1131,12 +1200,19 @@
           "otel_attribute": "mcs.step.auto_filled_arguments",
           "transform": "direct",
           "transform_value": ""
+        },
+        {
+          "mcs_property": "arguments",
+          "otel_attribute": "copilot_studio.arguments",
+          "transform": "direct",
+          "transform_value": ""
         }
       ]
     },
     {
       "rule_id": "plan_step_finished",
       "rule_name": "Plan Step Finished (Tool Output)",
+      "description": "Maps DynamicPlanStepFinished to an execute_tool span with tool results, retrieval documents, and execution metadata",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "DynamicPlanStepFinished",
       "otel_operation_name": "execute_tool",
@@ -1259,6 +1335,7 @@
     {
       "rule_id": "plan_finished",
       "rule_name": "Plan Finished",
+      "description": "Maps DynamicPlanFinished to a chain span indicating plan completion or cancellation",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "DynamicPlanFinished",
       "otel_operation_name": "chain",
@@ -1285,6 +1362,7 @@
     {
       "rule_id": "topic_classification",
       "rule_name": "Topic Classification",
+      "description": "Maps DialogRedirect to a dialog_redirect span capturing topic routing changes and target dialog info",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "DialogRedirect",
       "otel_operation_name": "dialog_redirect",
@@ -1311,6 +1389,7 @@
     {
       "rule_id": "mcp_server_init",
       "rule_name": "MCP Server Initialize",
+      "description": "Maps DynamicServerInitialize to a create_agent span with MCP server name, version, protocol, and capabilities",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "DynamicServerInitialize",
       "otel_operation_name": "create_agent",
@@ -1361,12 +1440,25 @@
           "otel_attribute": "mcs.mcp.initialization_result",
           "transform": "direct",
           "transform_value": ""
+        },
+        {
+          "mcs_property": "dialogSchemaName",
+          "otel_attribute": "copilot_studio.dialogSchemaName",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "initializationResult",
+          "otel_attribute": "copilot_studio.initializationResult",
+          "transform": "direct",
+          "transform_value": ""
         }
       ]
     },
     {
       "rule_id": "mcp_tools_list",
       "rule_name": "MCP Tools List",
+      "description": "Maps DynamicServerToolsList to a create_agent span listing available MCP tools and their count",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "DynamicServerToolsList",
       "otel_operation_name": "create_agent",
@@ -1399,12 +1491,19 @@
           "otel_attribute": "mcs.mcp.dialog_schema",
           "transform": "direct",
           "transform_value": ""
+        },
+        {
+          "mcs_property": "toolsList",
+          "otel_attribute": "copilot_studio.toolsList",
+          "transform": "direct",
+          "transform_value": ""
         }
       ]
     },
     {
       "rule_id": "plan_step_triggered",
       "rule_name": "Plan Step Triggered",
+      "description": "Maps DynamicPlanStepTriggered to a chain span with orchestrator reasoning and step state",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "DynamicPlanStepTriggered",
       "otel_operation_name": "chain",
@@ -1461,6 +1560,7 @@
     {
       "rule_id": "plan_received_debug",
       "rule_name": "Plan Received Debug",
+      "description": "Maps DynamicPlanReceivedDebug to a chain span with the user ask, plan summary, and plan identifier",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "DynamicPlanReceivedDebug",
       "otel_operation_name": "chain",
@@ -1493,12 +1593,25 @@
           "otel_attribute": "mcs.plan.id",
           "transform": "direct",
           "transform_value": ""
+        },
+        {
+          "mcs_property": "ask",
+          "otel_attribute": "copilot_studio.ask",
+          "transform": "direct",
+          "transform_value": ""
+        },
+        {
+          "mcs_property": "summary",
+          "otel_attribute": "copilot_studio.summary",
+          "transform": "direct",
+          "transform_value": ""
         }
       ]
     },
     {
       "rule_id": "dialog_tracing",
       "rule_name": "Dialog Tracing",
+      "description": "Maps DialogTracingInfo to a chain span with action types, topic IDs, and dialog exceptions",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "DialogTracingInfo",
       "otel_operation_name": "chain",
@@ -1537,6 +1650,7 @@
     {
       "rule_id": "error_trace",
       "rule_name": "Error Trace",
+      "description": "Maps ErrorTraceData to an error event on the user turn span with error code, message, and classification",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "ErrorTraceData",
       "otel_operation_name": "chain",
@@ -1575,6 +1689,7 @@
     {
       "rule_id": "error_code",
       "rule_name": "Error Code",
+      "description": "Maps ErrorCode to an error event on the user turn span with error code and message",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "ErrorCode",
       "otel_operation_name": "chain",
@@ -1601,6 +1716,7 @@
     {
       "rule_id": "variable_assignment",
       "rule_name": "Variable Assignment",
+      "description": "Maps VariableAssignment to an event capturing bot variable name, value, and type changes",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "VariableAssignment",
       "otel_operation_name": "chain",
@@ -1645,6 +1761,7 @@
     {
       "rule_id": "unknown_intent",
       "rule_name": "Unknown Intent",
+      "description": "Maps UnknownIntent to an event recording unrecognized user input that matched no topic",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "UnknownIntent",
       "otel_operation_name": "intent_recognition",
@@ -1665,6 +1782,7 @@
     {
       "rule_id": "mcp_server_init_confirmation",
       "rule_name": "MCP Server Init Confirmation",
+      "description": "Maps DynamicServerInitializeConfirmation to a child span of MCP server init confirming successful setup",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "DynamicServerInitializeConfirmation",
       "otel_operation_name": "create_agent",
@@ -1685,6 +1803,7 @@
     {
       "rule_id": "protocol_info",
       "rule_name": "Protocol Info",
+      "description": "Maps ProtocolInfo to a chain span capturing conversation protocol metadata",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "ProtocolInfo",
       "otel_operation_name": "chain",
@@ -1698,6 +1817,7 @@
     {
       "rule_id": "skill_info",
       "rule_name": "Skill Info",
+      "description": "Maps SkillInfo to a create_agent span capturing registered skill and connector metadata",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "SkillInfo",
       "otel_operation_name": "create_agent",
@@ -1711,6 +1831,7 @@
     {
       "rule_id": "csat_response",
       "rule_name": "CSAT Response",
+      "description": "Maps CSATSurveyResponse to an evaluation event on the session root with CSAT score and comment",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "CSATSurveyResponse",
       "otel_operation_name": "chain",
@@ -1743,6 +1864,7 @@
     {
       "rule_id": "prr_response",
       "rule_name": "PRR Response",
+      "description": "Maps PRRSurveyResponse to an evaluation event on the session root with post-resolution rating",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "PRRSurveyResponse",
       "otel_operation_name": "chain",
@@ -1769,6 +1891,7 @@
     {
       "rule_id": "implied_success",
       "rule_name": "Implied Success",
+      "description": "Maps ImpliedSuccess to an event on the session root indicating auto-detected successful resolution",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "ImpliedSuccess",
       "otel_operation_name": "chain",
@@ -1789,6 +1912,7 @@
     {
       "rule_id": "escalation",
       "rule_name": "Escalation Requested",
+      "description": "Maps EscalationRequested to an event on the session root signaling a request to transfer to a human agent",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "EscalationRequested",
       "otel_operation_name": "chain",
@@ -1802,6 +1926,7 @@
     {
       "rule_id": "handoff",
       "rule_name": "HandOff",
+      "description": "Maps HandOff to an event on the session root signaling conversation transfer to a human agent or external system",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "HandOff",
       "otel_operation_name": "chain",
@@ -1815,6 +1940,7 @@
     {
       "rule_id": "ai_builder_trace",
       "rule_name": "AI Builder Trace",
+      "description": "Maps AIBuilderTraceData to an execute_tool span with AI Builder action ID, input, and output",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "AIBuilderTraceData",
       "otel_operation_name": "execute_tool",
@@ -1859,6 +1985,7 @@
     {
       "rule_id": "dynamic_plan_step_blocked",
       "rule_name": "Plan Step Blocked",
+      "description": "Maps DynamicPlanStepBlocked to a span capturing a plan step that was blocked from execution",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "DynamicPlanStepBlocked",
       "otel_operation_name": "execute_tool",
@@ -1915,6 +2042,7 @@
     {
       "rule_id": "knowledge_trace_data",
       "rule_name": "Knowledge Trace Data",
+      "description": "Maps KnowledgeTraceData to a knowledge.retrieval span with cited sources and completion state",
       "mcs_entity_type": "trace_event",
       "mcs_value_type": "KnowledgeTraceData",
       "otel_operation_name": "knowledge.retrieval",
@@ -1948,6 +2076,87 @@
           "transform": "direct",
           "transform_value": ""
         }
+      ]
+    }
+  ],
+  "session_info_extraction": [
+    {
+      "source_value_type": "SessionInfo",
+      "field_mappings": [
+        {
+          "source_key": "outcome",
+          "target_key": "outcome",
+          "default": "None"
+        },
+        {
+          "source_key": "type",
+          "target_key": "session_type",
+          "default": "Unknown"
+        },
+        {
+          "source_key": "turnCount",
+          "target_key": "turn_count",
+          "default": 0
+        },
+        {
+          "source_key": "impliedSuccess",
+          "target_key": "implied_success",
+          "default": false
+        },
+        {
+          "source_key": "outcomeReason",
+          "target_key": "outcome_reason",
+          "default": ""
+        },
+        {
+          "source_key": "startTimeUtc",
+          "target_key": "start_time_utc",
+          "default": ""
+        },
+        {
+          "source_key": "endTimeUtc",
+          "target_key": "end_time_utc",
+          "default": ""
+        }
+      ]
+    },
+    {
+      "source_value_type": "ConversationInfo",
+      "field_mappings": [
+        {
+          "source_key": "locale",
+          "target_key": "locale",
+          "default": ""
+        },
+        {
+          "source_key": "isDesignMode",
+          "target_key": "is_design_mode",
+          "default": false
+        }
+      ]
+    }
+  ],
+  "derived_session_fields": [
+    {
+      "target_key": "environment",
+      "condition": {
+        "field": "is_design_mode",
+        "equals": true
+      },
+      "true_value": "design",
+      "false_value": "production"
+    }
+  ],
+  "changelog": [
+    {
+      "version": "1.1",
+      "date": "2026-03-16",
+      "changes": [
+        "Added descriptions to all event_metadata entries",
+        "Added descriptions to all mapping rules",
+        "Added session_info_extraction config section",
+        "Added derived_session_fields config section",
+        "Added changelog for version tracking"
       ]
     }
   ]

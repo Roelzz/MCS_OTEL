@@ -6,8 +6,8 @@ Converts Microsoft Copilot Studio conversation transcripts into OpenTelemetry-co
 
 - Upload MCS transcript JSON or Dataverse CSV (dialog.json / Dataverse export / Rex format)
 - Visual ETL mapping UI (React Flow) — drag-and-drop MCS entities to OTEL targets
+- Config-driven mapping — all rules, attributes, and descriptions in `config/default_mapping.json`
 - 28 default mapping rules covering 26 event types
-- 104 OTEL attribute definitions across 10 categories
 - Full OTLP compliance (Client SpanKind for root, UNSET status codes)
 - Deep support for MCP, AI Builder, and Knowledge Retrieval tracing
 - Live span tree preview with clickable span inspector and OTLP JSON export
@@ -30,16 +30,19 @@ MCS_OTEL/
 ├── main.py                  # Reflex app entry point
 ├── rxconfig.py              # Reflex configuration (ports, env)
 ├── models.py                # Data models: MCSActivity, OTELSpan, SpanMappingRule, etc.
-├── parsers.py               # Transcript parsing, entity extraction, enrichment
-├── converter.py             # Entity → OTEL span mapping, OTLP JSON export
-├── otel_registry.py         # 104 OTEL attribute definitions across 10 categories
+├── parsers.py               # Transcript parsing and entity extraction (config-driven)
+├── converter.py             # Entity → OTEL span mapping, OTLP JSON export (config-driven)
+├── otel_registry.py         # OTEL attribute definitions across 10 categories
+├── config_loader.py         # Loads and validates mapping config from JSON
 ├── analyze_transcripts.py   # CLI: transcript coverage analysis
-├── improve.py               # Self-learning mapper improvement engine
+├── improve.py               # Self-learning improvement engine (outputs config updates)
 ├── pyproject.toml           # Project config and dependencies
 ├── web/
 │   ├── web.py               # Reflex frontend layout + /improve route
 │   ├── components/          # UI components (upload, mapping editor, span tree, export, improve dashboard)
 │   └── state/               # Reflex state managers (upload, mapping, preview, improve)
+├── config/
+│   └── default_mapping.json # Single source of truth for all mapping rules, attributes, and metadata
 ├── tests/
 │   ├── test_parsers.py      # Parser unit tests
 │   ├── test_models.py       # Model unit tests
@@ -54,7 +57,7 @@ MCS_OTEL/
 
 ## Transcript Analysis CLI
 
-Scans all available transcripts, cross-references every `valueType` against `TRACKED_EVENT_TYPES` and `generate_default_mapping()` rules, and produces a markdown report with coverage gaps and suggested mapping code.
+Scans all available transcripts, cross-references every `valueType` against tracked event types and mapping rules in `config/default_mapping.json`, and produces a markdown report with coverage gaps and suggested config additions.
 
 ### Usage
 
@@ -81,15 +84,15 @@ The generated `docs/transcript_analysis.md` contains:
 
 - **Summary** — files analyzed, total activities, unique valueTypes, coverage stats
 - **All ValueTypes** — table with count, tracked status, mapping rule status, property coverage
-- **Untracked ValueTypes** — sample payload + suggested `SpanMappingRule` Python snippet
-- **Attribute Mapping Gaps** — per tracked type: available vs mapped vs unmapped properties with suggested `AttributeMapping` snippets
-- **Tracked Types Missing Rules** — types in `TRACKED_EVENT_TYPES` without a mapping rule
+- **Untracked ValueTypes** — sample payload + suggested JSON config snippet for `default_mapping.json`
+- **Attribute Mapping Gaps** — per tracked type: available vs mapped vs unmapped properties with suggested attribute mapping JSON
+- **Tracked Types Missing Rules** — types in tracked event types without a mapping rule
 
 ### Acting on Findings
 
-1. Copy suggested `SpanMappingRule` snippets into `converter.py` → `generate_default_mapping()`
-2. Add new valueTypes to `TRACKED_EVENT_TYPES` in `parsers.py`
-3. Add enrichment logic to `_enrich_entity_properties()` in `parsers.py` if nested flattening is needed
+1. Add suggested mapping rules and attribute mappings to `config/default_mapping.json`
+2. Add new valueTypes to `tracked_event_types` in `config/default_mapping.json`
+3. Or use the improvement cycle (`improve.py run`) which outputs a `proposed_mapping.json` with all changes
 
 ## Mapping Architecture
 
@@ -102,6 +105,17 @@ MCS Activity (valueType) → Entity Extraction → SpanMappingRule → OTEL Span
 **Entity types:** `trace_event` (from activity valueTypes), `turn` (user-bot message pairs)
 
 **OTEL operations:** `agent.turn`, `gen_ai.chat`, `tool.execute`, `knowledge.retrieval`, `chain`, `text_completion`, `create_agent`, `topic_classification`
+
+### Config File (`config/default_mapping.json`)
+
+The config file is the single source of truth for all mapping definitions:
+
+- **`mapping_rules`** — all span mapping rules with descriptions, event metadata, and attribute mappings
+- **`tracked_event_types`** — which MCS valueTypes to process
+- **`otel_attributes`** — attribute definitions across 10 categories
+- **`session_info_extraction`** — config-driven field extraction from SessionInfo/ConversationInfo
+- **`derived_session_fields`** — config-driven environment derivation (e.g. channel, locale)
+- **`changelog`** — version history with changes per version
 
 **Span hierarchy:**
 ```
@@ -121,19 +135,27 @@ session_root (agent.turn)
 
 ## Self-Learning Improvement Loop
 
-Uses hundreds of real transcripts as a training corpus to iteratively improve the mapper. Auto-fixes obvious gaps, presents ambiguous ones for human review.
+Uses hundreds of real transcripts as a training corpus to iteratively improve the mapping config. Auto-fixes obvious gaps, presents ambiguous ones for human review.
 
 ### Quick Start (CLI)
 
 ```bash
 # Point at a directory of JSON files
-uv run python improve.py /path/to/transcripts/
+uv run python improve.py run /path/to/transcripts/
 
 # Point at a Dataverse CSV export (one transcript per row in 'content' column)
-uv run python improve.py /path/to/conversationtranscripts.csv
+uv run python improve.py run /path/to/conversationtranscripts.csv
 
 # Point directly at the samples directory
-uv run python improve.py samples/
+uv run python improve.py run samples/
+```
+
+### Workflow
+
+```bash
+uv run python improve.py run samples/       # Run analysis, produce proposed_mapping.json
+uv run python improve.py diff               # Review differences
+uv run python improve.py approve            # Apply with version bump
 ```
 
 ### CLI Flags
@@ -155,7 +177,7 @@ The dashboard (accessible via the "Improve Mapping" navbar button) provides a gu
 1. **Configure** — set input directory, max iterations, min conversations threshold
 2. **Analyze** — iteration timeline, coverage chart, auto-applied vs needs-review summary
 3. **Review & Approve** — accept/reject each finding with code preview
-4. **Preview & Apply** — diff preview of exact source file changes before applying to `parsers.py`, `converter.py`, `otel_registry.py`
+4. **Preview & Apply** — diff preview of proposed config changes before applying to `config/default_mapping.json`
 5. **Verify** — re-run to confirm improvements with before/after comparison
 
 ### How It Works
@@ -171,24 +193,21 @@ The dashboard (accessible via the "Improve Mapping" navbar button) provides a gu
 
 | File | Improvements |
 |------|-------------|
-| `parsers.py` | New types in `TRACKED_EVENT_TYPES`, new enrichment blocks |
-| `converter.py` | New `SpanMappingRule` entries, new `AttributeMapping` entries |
-| `otel_registry.py` | New `OTELAttribute` entries in `MCS_CUSTOM_ATTRIBUTES` |
+| `config/default_mapping.json` | New mapping rules, event metadata, attribute mappings, tracked event types |
 
 ### Output
 
 Results are saved to `improve_runs/`:
 - `iter_N_<hash>.json` — per-iteration metrics and findings
-- `code_export.py` — all code changes ready to copy into source files
-- `improved_mapping.json` — the final improved mapping specification
+- `proposed_mapping.json` — the proposed config changes ready for review
 
 ## Next Steps
 
 - **Gather more transcripts** — export from Copilot Studio Analytics, Dataverse `conversationtranscript` table (CSV with `content` column), or Test Canvas
 - **Run the improvement loop** to auto-discover and fix mapping gaps
 - **Run the analysis CLI** after adding new transcripts to find gaps
-- **Review `docs/transcript_analysis.md`** for suggested mapping updates
-- **Implement suggested mappings** in `converter.py` and `parsers.py`
+- **Review `docs/transcript_analysis.md`** for suggested config updates
+- **Add suggested mappings** to `config/default_mapping.json`
 - **Future:** live OTEL collector integration, token accounting, PII redaction
 
 ## Tech Stack

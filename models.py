@@ -284,6 +284,7 @@ class AttributeMapping(BaseModel):
 class SpanMappingRule(BaseModel):
     rule_id: str
     rule_name: str = ""
+    description: str = ""
     mcs_entity_type: str
     mcs_value_type: str = ""
     otel_operation_name: OTELOperationName
@@ -299,6 +300,7 @@ class EventMetadata(BaseModel):
     value_type: str
     tracked: bool = True
     label: str = ""
+    description: str = ""
     entity_type: str = ""
     default_output_type: str = ""
 
@@ -317,6 +319,30 @@ class EnrichmentRule(BaseModel):
     derived_fields: list[EnrichmentOp] = Field(default_factory=list)
 
 
+class SessionInfoFieldMapping(BaseModel):
+    source_key: str
+    target_key: str
+    default: Any = ""
+
+
+class SessionInfoExtraction(BaseModel):
+    source_value_type: str
+    field_mappings: list[SessionInfoFieldMapping] = Field(default_factory=list)
+
+
+class DerivedSessionField(BaseModel):
+    target_key: str
+    condition: dict = Field(default_factory=dict)
+    true_value: str = ""
+    false_value: str = ""
+
+
+class ChangelogEntry(BaseModel):
+    version: str
+    date: str
+    changes: list[str] = Field(default_factory=list)
+
+
 class MappingSpecification(BaseModel):
     version: str = "1.0"
     name: str = "MCS-to-OTEL GenAI Mapping"
@@ -325,3 +351,6 @@ class MappingSpecification(BaseModel):
     event_metadata: list[EventMetadata] = Field(default_factory=list)
     enrichment_rules: list[EnrichmentRule] = Field(default_factory=list)
     rules: list[SpanMappingRule] = Field(default_factory=list)
+    session_info_extraction: list[SessionInfoExtraction] = Field(default_factory=list)
+    derived_session_fields: list[DerivedSessionField] = Field(default_factory=list)
+    changelog: list[ChangelogEntry] = Field(default_factory=list)

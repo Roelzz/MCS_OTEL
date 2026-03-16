@@ -1,10 +1,12 @@
 """Self-learning mapper improvement engine.
 
 Analyzes real MCS conversation transcripts to iteratively improve
-parsers.py, converter.py, and otel_registry.py until coverage is maximized.
+the mapping config (config/default_mapping.json) until coverage is maximized.
 
 Loop: Analyze all transcripts -> measure coverage -> find gaps ->
       auto-fix obvious gaps -> ask human on ambiguous ones -> repeat.
+
+Output: proposed_mapping.json for review. Use 'approve' command to apply.
 """
 
 import json
@@ -21,22 +23,20 @@ from loguru import logger
 
 from analyze_transcripts import (
     FileStats,
+    _suggest_otel_op,
     aggregate_stats,
-    analyze_file,
     build_mapping_gap_analysis,
     discover_files,
     iter_transcripts,
-    suggest_attribute_mappings,
-    suggest_mapping_rule,
+    suggest_attribute_mappings_json,
+    suggest_mapping_rule_json,
 )
-from config_loader import load_default_mapping
+from config_loader import load_default_mapping, DEFAULT_MAPPING_PATH
 from converter import apply_mapping, to_otlp_json
 from models import (
     AttributeMapping,
     EventMetadata,
     MappingSpecification,
-    MCSEntity,
-    OTELOperationName,
     OTELSpanKind,
     SpanMappingRule,
 )
@@ -80,7 +80,7 @@ class Finding:
     property_name: str = ""
     file_count: int = 0
     sample_value: dict = field(default_factory=dict)
-    code_snippet: str = ""
+    suggested_config: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -204,85 +204,13 @@ def _analyze_single_content(
         trace = apply_mapping(entities, spec)
         fa.span_count = trace.total_spans + trace.total_events
 
-        total_attrs = 0
-        filled_attrs = 0
-        _count_attributes(trace.root_span, total_attrs, filled_attrs)
-        counts = _count_attributes_recursive(trace.root_span)
-        total_attrs, filled_attrs = counts
+        total_attrs, filled_attrs = _count_attributes_recursive(trace.root_span)
         fa.attribute_fill_rate = filled_attrs / total_attrs if total_attrs > 0 else 0.0
 
         _detect_empty_spans(trace.root_span, fa.empty_spans)
 
     except Exception as e:
         logger.debug("Failed to apply mapping to {}: {}", label, e)
-        fa.error = f"mapping: {e}"
-
-    return fa
-
-
-def _analyze_single_file(
-    fpath: Path,
-    spec: MappingSpecification,
-    tracked_types: set[str],
-    mapped_by_vt: dict[str, set[str]],
-) -> FileAnalysis:
-    """Analyze a single transcript file through the full pipeline."""
-    fa = FileAnalysis(path=str(fpath), success=False)
-
-    try:
-        content = fpath.read_text(encoding="utf-8")
-        transcript = parse_transcript(content)
-        entities = extract_entities(transcript, spec=spec)
-    except Exception as e:
-        fa.error = str(e)
-        logger.debug("Failed to parse {}: {}", fpath, e)
-        return fa
-
-    fa.success = True
-    fa.activity_count = len(transcript.activities)
-    fa.entity_count = len(entities)
-
-    # Collect value types from entities
-    for ent in entities:
-        vt = ent.value_type
-        if not vt:
-            continue
-        fa.value_types[vt] = fa.value_types.get(vt, 0) + 1
-
-        # Check if unknown
-        if vt not in tracked_types and ent.entity_type == "trace_event":
-            if vt not in fa.unknown_types:
-                fa.unknown_types[vt] = ent.properties
-
-        # Check for unmapped properties on tracked types
-        if vt in tracked_types and vt in mapped_by_vt:
-            mapped_props = mapped_by_vt[vt]
-            skip_props = {"timestamp", "actions", "steps", "toolDefinitions", "observation", "content"}
-            available = set(ent.properties.keys()) - skip_props - {"timestamp"}
-            unmapped = available - mapped_props
-            if unmapped:
-                if vt not in fa.unmapped_props:
-                    fa.unmapped_props[vt] = set()
-                fa.unmapped_props[vt].update(unmapped)
-
-    # Try applying the mapping to measure coverage
-    try:
-        trace = apply_mapping(entities, spec)
-        fa.span_count = trace.total_spans + trace.total_events
-
-        # Compute attribute fill rate
-        total_attrs = 0
-        filled_attrs = 0
-        _count_attributes(trace.root_span, total_attrs, filled_attrs)
-        counts = _count_attributes_recursive(trace.root_span)
-        total_attrs, filled_attrs = counts
-        fa.attribute_fill_rate = filled_attrs / total_attrs if total_attrs > 0 else 0.0
-
-        # Detect empty spans (only gen_ai.operation.name + gen_ai.system)
-        _detect_empty_spans(trace.root_span, fa.empty_spans)
-
-    except Exception as e:
-        logger.debug("Failed to apply mapping to {}: {}", fpath, e)
         fa.error = f"mapping: {e}"
 
     return fa
@@ -301,10 +229,6 @@ def _count_attributes_recursive(span) -> tuple[int, int]:
 
     return total, filled
 
-
-def _count_attributes(span, total: int, filled: int) -> None:
-    """Deprecated — use _count_attributes_recursive instead."""
-    pass
 
 
 def _detect_empty_spans(span, empty_list: list[str]) -> None:
@@ -351,7 +275,7 @@ def classify_findings(
             category = "new_type"
 
         sample_props = set(sample.keys()) if sample else set()
-        code = suggest_mapping_rule(vt, sample_props)
+        config = suggest_mapping_rule_json(vt, sample_props)
 
         findings.append(Finding(
             category=category,
@@ -359,21 +283,19 @@ def classify_findings(
             value_type=vt,
             file_count=file_count,
             sample_value=_safe_sample(sample),
-            code_snippet=code,
+            suggested_config=config,
         ))
 
     # Unmapped properties on tracked types
     for vt, props in unmapped_props.items():
         for prop in sorted(props):
-            # Count how many unique unmapped props — we consider all as auto-fixable
-            # if the type itself is tracked (mapped props just need extending)
             findings.append(Finding(
                 category="new_attribute",
                 auto_fixable=True,
                 value_type=vt,
                 property_name=prop,
-                file_count=0,  # Not tracked per-file for attributes
-                code_snippet=f'AttributeMapping(\n    mcs_property="{prop}",\n    otel_attribute="copilot_studio.{prop}",\n),',
+                file_count=0,
+                suggested_config={"mcs_property": prop, "otel_attribute": f"copilot_studio.{prop}"},
             ))
 
     return findings
@@ -489,24 +411,6 @@ def _to_snake_case(name: str) -> str:
             result.append("_")
         result.append(ch.lower())
     return "".join(result)
-
-
-def _suggest_otel_op(value_type: str) -> OTELOperationName:
-    """Heuristic OTEL operation for a value type."""
-    vt = value_type.lower()
-    if "search" in vt or "retrieval" in vt or "knowledge" in vt:
-        return OTELOperationName.knowledge_retrieval
-    if "plan" in vt or "chain" in vt or "dialog" in vt or "tracing" in vt:
-        return OTELOperationName.chain
-    if "tool" in vt or "step" in vt or "execute" in vt:
-        return OTELOperationName.tool_execute
-    if "error" in vt:
-        return OTELOperationName.chain
-    if "topic" in vt or "redirect" in vt or "intent" in vt:
-        return OTELOperationName.topic_classification
-    if "server" in vt or "agent" in vt or "skill" in vt or "mcp" in vt:
-        return OTELOperationName.create_agent
-    return OTELOperationName.chain
 
 
 def _build_attribute_mappings(sample: dict) -> list[AttributeMapping]:
@@ -708,10 +612,10 @@ def run_improvement_loop(
         prev_coverage = coverage
         prev_fill = fill_rate
 
-    # Save final spec
-    spec_path = output_dir / "improved_mapping.json"
+    # Save proposed spec for review
+    spec_path = output_dir / "proposed_mapping.json"
     spec_path.write_text(spec.model_dump_json(indent=2), encoding="utf-8")
-    logger.info("Improved mapping saved to {}", spec_path)
+    logger.info("Proposed mapping saved to {} — use 'approve' command to apply", spec_path)
 
     return runs
 
@@ -741,7 +645,7 @@ def _save_iteration(output_dir: Path, run: ImprovementRun) -> None:
                 "category": f.category,
                 "value_type": f.value_type,
                 "property_name": f.property_name,
-                "code_snippet": f.code_snippet,
+                "suggested_config": f.suggested_config,
                 "sample_value": f.sample_value,
             }
             for f in run.needs_review
@@ -784,7 +688,8 @@ def finding_to_dict(finding: Finding) -> dict:
         "property_name": finding.property_name,
         "file_count": finding.file_count,
         "sample_value": finding.sample_value,
-        "code_snippet": finding.code_snippet,
+        "suggested_config": finding.suggested_config,
+        "suggested_config_display": json.dumps(finding.suggested_config, indent=2, default=str),
     }
 
 
@@ -794,7 +699,7 @@ def finding_to_dict(finding: Finding) -> dict:
 
 
 @app.command()
-def main(
+def run(
     input_dir: Path = typer.Argument(..., help="Directory containing transcript JSON files"),
     max_iterations: int = typer.Option(5, "--max-iterations", "-n", help="Max improvement iterations"),
     min_files: int = typer.Option(3, "--min-files", help="Min file count for auto-fix threshold"),
@@ -826,13 +731,13 @@ def main(
     typer.echo("Improvement Loop Summary")
     typer.echo(f"{'='*60}")
 
-    for i, run in enumerate(runs, 1):
-        delta_cov = f"+{run.delta_coverage:.1f}%" if run.delta_coverage > 0 else f"{run.delta_coverage:.1f}%"
+    for i, run_result in enumerate(runs, 1):
+        delta_cov = f"+{run_result.delta_coverage:.1f}%" if run_result.delta_coverage > 0 else f"{run_result.delta_coverage:.1f}%"
         typer.echo(
-            f"  Iteration {i}: coverage={run.avg_coverage:.1f}% ({delta_cov}) | "
-            f"fill_rate={run.avg_fill_rate:.1%} | "
-            f"auto-fixed={len(run.auto_applied)} | "
-            f"needs-review={len(run.needs_review)}"
+            f"  Iteration {i}: coverage={run_result.avg_coverage:.1f}% ({delta_cov}) | "
+            f"fill_rate={run_result.avg_fill_rate:.1%} | "
+            f"auto-fixed={len(run_result.auto_applied)} | "
+            f"needs-review={len(run_result.needs_review)}"
         )
 
     if runs:
@@ -841,7 +746,148 @@ def main(
         typer.echo(f"Results: {output}/")
 
         if final.needs_review:
-            typer.echo(f"\n{len(final.needs_review)} findings need human review — see {output}/code_export.py")
+            typer.echo(f"\n{len(final.needs_review)} findings need human review — see {output}/proposed_mapping.json")
+
+    typer.echo(f"\nNext: review with 'uv run python improve.py diff' then 'uv run python improve.py approve'")
+
+
+def _bump_version(version: str) -> str:
+    """Bump minor version: 1.1 -> 1.2, 2.0 -> 2.1."""
+    parts = version.split(".")
+    if len(parts) >= 2:
+        try:
+            parts[-1] = str(int(parts[-1]) + 1)
+        except ValueError:
+            parts.append("1")
+        return ".".join(parts)
+    return f"{version}.1"
+
+
+@app.command()
+def diff(
+    source: Path = typer.Option(Path("improve_runs"), "--source", "-s", help="Directory containing proposed_mapping.json"),
+) -> None:
+    """Show diff between proposed mapping and current config."""
+    proposed_path = source / "proposed_mapping.json"
+    if not proposed_path.exists():
+        typer.echo(f"No proposed mapping found at {proposed_path}")
+        typer.echo("Run the improvement loop first: uv run python improve.py run <input_dir>")
+        raise typer.Exit(1)
+
+    current = json.loads(DEFAULT_MAPPING_PATH.read_text(encoding="utf-8"))
+    proposed = json.loads(proposed_path.read_text(encoding="utf-8"))
+
+    # Compare key sections
+    typer.echo(f"{'='*60}")
+    typer.echo(f"Config Diff: {DEFAULT_MAPPING_PATH.name} vs proposed_mapping.json")
+    typer.echo(f"{'='*60}")
+
+    current_rules = {r["rule_id"]: r for r in current.get("rules", [])}
+    proposed_rules = {r["rule_id"]: r for r in proposed.get("rules", [])}
+
+    new_rules = set(proposed_rules.keys()) - set(current_rules.keys())
+    removed_rules = set(current_rules.keys()) - set(proposed_rules.keys())
+
+    current_meta = {em["value_type"]: em for em in current.get("event_metadata", [])}
+    proposed_meta = {em["value_type"]: em for em in proposed.get("event_metadata", [])}
+    new_meta = set(proposed_meta.keys()) - set(current_meta.keys())
+
+    typer.echo(f"\nVersion: {current.get('version', '?')} → {proposed.get('version', '?')}")
+    typer.echo(f"Rules: {len(current_rules)} → {len(proposed_rules)} ({len(new_rules)} new, {len(removed_rules)} removed)")
+    typer.echo(f"Event metadata: {len(current_meta)} → {len(proposed_meta)} ({len(new_meta)} new)")
+
+    if new_rules:
+        typer.echo(f"\n--- New rules ---")
+        for rid in sorted(new_rules):
+            rule = proposed_rules[rid]
+            typer.echo(f"  + {rid}: {rule.get('mcs_value_type', '')} → {rule.get('otel_operation_name', '')}")
+            attrs = rule.get("attribute_mappings", [])
+            if attrs:
+                typer.echo(f"    attributes: {len(attrs)} mappings")
+
+    if new_meta:
+        typer.echo(f"\n--- New event metadata ---")
+        for vt in sorted(new_meta):
+            typer.echo(f"  + {vt}")
+
+    # Check for modified rules (attribute count changes)
+    modified = []
+    for rid in current_rules.keys() & proposed_rules.keys():
+        c_attrs = len(current_rules[rid].get("attribute_mappings", []))
+        p_attrs = len(proposed_rules[rid].get("attribute_mappings", []))
+        if c_attrs != p_attrs:
+            modified.append((rid, c_attrs, p_attrs))
+
+    if modified:
+        typer.echo(f"\n--- Modified rules ---")
+        for rid, c, p in modified:
+            typer.echo(f"  ~ {rid}: {c} → {p} attribute mappings")
+
+    if not new_rules and not new_meta and not modified and not removed_rules:
+        typer.echo("\nNo differences found.")
+
+
+@app.command()
+def approve(
+    source: Path = typer.Option(Path("improve_runs"), "--source", "-s", help="Directory containing proposed_mapping.json"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+) -> None:
+    """Apply proposed mapping to config/default_mapping.json with version bump."""
+    proposed_path = source / "proposed_mapping.json"
+    if not proposed_path.exists():
+        typer.echo(f"No proposed mapping found at {proposed_path}")
+        typer.echo("Run the improvement loop first: uv run python improve.py run <input_dir>")
+        raise typer.Exit(1)
+
+    proposed_data = json.loads(proposed_path.read_text(encoding="utf-8"))
+    current_data = json.loads(DEFAULT_MAPPING_PATH.read_text(encoding="utf-8"))
+
+    current_version = current_data.get("version", "1.0")
+    new_version = _bump_version(current_version)
+
+    # Version bump
+    proposed_data["version"] = new_version
+
+    # Add changelog entry
+    changelog = proposed_data.get("changelog", [])
+    current_rules = {r["rule_id"] for r in current_data.get("rules", [])}
+    proposed_rules = {r["rule_id"] for r in proposed_data.get("rules", [])}
+    new_rule_count = len(proposed_rules - current_rules)
+
+    changes = []
+    if new_rule_count:
+        changes.append(f"Added {new_rule_count} new mapping rules")
+    current_meta_count = len(current_data.get("event_metadata", []))
+    proposed_meta_count = len(proposed_data.get("event_metadata", []))
+    if proposed_meta_count > current_meta_count:
+        changes.append(f"Added {proposed_meta_count - current_meta_count} new event metadata entries")
+    if not changes:
+        changes.append("Updated mapping configuration")
+
+    changelog.insert(0, {
+        "version": new_version,
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "changes": changes,
+    })
+    proposed_data["changelog"] = changelog
+
+    typer.echo(f"Apply proposed mapping to {DEFAULT_MAPPING_PATH}?")
+    typer.echo(f"  Version: {current_version} → {new_version}")
+    for change in changes:
+        typer.echo(f"  - {change}")
+
+    if not yes:
+        confirmed = typer.confirm("Proceed?")
+        if not confirmed:
+            typer.echo("Aborted.")
+            raise typer.Exit(0)
+
+    # Write updated config
+    DEFAULT_MAPPING_PATH.write_text(
+        json.dumps(proposed_data, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    typer.echo(f"Applied v{new_version} to {DEFAULT_MAPPING_PATH}")
 
 
 if __name__ == "__main__":

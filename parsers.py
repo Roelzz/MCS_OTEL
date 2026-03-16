@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 
@@ -138,23 +139,39 @@ def _parse_activity(raw: dict, index: int) -> MCSActivity:
     )
 
 
-def _extract_session_info(activities: list[MCSActivity]) -> dict:
-    """Extract SessionInfo, ConversationInfo, and channel context from activities."""
+def _extract_session_info(
+    activities: list[MCSActivity],
+    spec: MappingSpecification | None = None,
+) -> dict:
+    """Extract session info from activities using config-driven field mappings.
+
+    Falls back to hardcoded defaults when spec has no session_info_extraction.
+    """
     info: dict = {}
-    for a in activities:
-        if a.type == "trace":
-            val = a.value
-            if a.value_type == "SessionInfo":
-                info["outcome"] = val.get("outcome", "None")
-                info["session_type"] = val.get("type", "Unknown")
-                info["turn_count"] = val.get("turnCount", 0)
-                info["implied_success"] = val.get("impliedSuccess", False)
-                info["outcome_reason"] = val.get("outcomeReason", "")
-                info["start_time_utc"] = val.get("startTimeUtc", "")
-                info["end_time_utc"] = val.get("endTimeUtc", "")
-            elif a.value_type == "ConversationInfo":
-                info["locale"] = val.get("locale", "")
-                info["is_design_mode"] = val.get("isDesignMode", False)
+
+    if spec and spec.session_info_extraction:
+        for extraction in spec.session_info_extraction:
+            for a in activities:
+                if a.type == "trace" and a.value_type == extraction.source_value_type:
+                    val = a.value
+                    for fm in extraction.field_mappings:
+                        info[fm.target_key] = val.get(fm.source_key, fm.default)
+                    break
+    else:
+        for a in activities:
+            if a.type == "trace":
+                val = a.value
+                if a.value_type == "SessionInfo":
+                    info["outcome"] = val.get("outcome", "None")
+                    info["session_type"] = val.get("type", "Unknown")
+                    info["turn_count"] = val.get("turnCount", 0)
+                    info["implied_success"] = val.get("impliedSuccess", False)
+                    info["outcome_reason"] = val.get("outcomeReason", "")
+                    info["start_time_utc"] = val.get("startTimeUtc", "")
+                    info["end_time_utc"] = val.get("endTimeUtc", "")
+                elif a.value_type == "ConversationInfo":
+                    info["locale"] = val.get("locale", "")
+                    info["is_design_mode"] = val.get("isDesignMode", False)
 
     # Extract channel context from first activity with channel info
     for a in activities:
@@ -165,11 +182,19 @@ def _extract_session_info(activities: list[MCSActivity]) -> dict:
             if isinstance(tenant, dict) and tenant.get("id") and "tenant" not in info:
                 info["tenant"] = tenant["id"]
 
-    # Derive environment from design mode
-    if info.get("is_design_mode"):
-        info["environment"] = "design"
-    elif "is_design_mode" in info:
-        info["environment"] = "production"
+    # Apply derived session fields from config
+    if spec and spec.derived_session_fields:
+        for dsf in spec.derived_session_fields:
+            cond = dsf.condition
+            field = cond.get("field", "")
+            if field and field in info:
+                if "equals" in cond:
+                    info[dsf.target_key] = dsf.true_value if info[field] == cond["equals"] else dsf.false_value
+    else:
+        if info.get("is_design_mode"):
+            info["environment"] = "design"
+        elif "is_design_mode" in info:
+            info["environment"] = "production"
 
     return info
 
@@ -182,7 +207,10 @@ def _find_first_bot_activity(activities: list[MCSActivity]) -> MCSActivity | Non
     return None
 
 
-def parse_transcript(content: str) -> MCSTranscript:
+def parse_transcript(
+    content: str,
+    spec: MappingSpecification | None = None,
+) -> MCSTranscript:
     """Parse raw JSON transcript into an MCSTranscript model."""
     raw_activities = _resolve_activities(content)
     logger.info("Parsing transcript with {} raw activities", len(raw_activities))
@@ -212,7 +240,7 @@ def parse_transcript(content: str) -> MCSTranscript:
             bot_id = from_data.get("id", "")
             break
 
-    session_info = _extract_session_info(activities)
+    session_info = _extract_session_info(activities, spec=spec)
 
     # Extract user context from first user message activity
     for raw in raw_activities:
@@ -322,7 +350,12 @@ def extract_entities(
     bot_content: dict | None = None,
     spec: MappingSpecification | None = None,
 ) -> list[MCSEntity]:
-    """Flatten parsed transcript into entity list for the mapping UI."""
+    """Create entities from a parsed MCS transcript.
+
+    Entity types are structural (session_root, turns, trace_events) and derived
+    directly from the transcript content. The actual mapping of these entities to
+    OTEL spans is driven by config rules in the MappingSpecification.
+    """
     # Load default spec if not provided
     if spec is None:
         from config_loader import load_default_mapping
@@ -646,7 +679,17 @@ _ENRICHMENT_OPS = {
 
 def parse_bot_content(yaml_content: str) -> dict:
     """Extract flat metadata dict from botContent.yml."""
-    data = yaml.safe_load(yaml_content)
+    try:
+        data = yaml.safe_load(yaml_content)
+    except yaml.YAMLError:
+        # Retry with unquoted special characters escaped — botContent files
+        # can contain bare @ in values (e.g. displayName: @mention tag)
+        sanitized = re.sub(r":\s+(@.+)$", r': "\1"', yaml_content, flags=re.MULTILINE)
+        try:
+            data = yaml.safe_load(sanitized)
+        except yaml.YAMLError as e:
+            logger.warning("Failed to parse botContent YAML: {}", e)
+            return {}
     if not isinstance(data, dict):
         raise ValueError("Invalid botContent YAML: expected a mapping")
 

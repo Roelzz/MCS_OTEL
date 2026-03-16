@@ -129,11 +129,20 @@ def apply_mapping(
     entities: list[MCSEntity], spec: MappingSpecification
 ) -> OTELTrace:
     """Apply mapping rules to entities to produce an OTEL trace tree."""
+    if not entities:
+        trace_id = _md5_hex("empty")
+        root = OTELSpan(
+            trace_id=trace_id,
+            span_id=_md5_hex(f"{trace_id}:empty", 16),
+            name="empty",
+            start_time_ns=0,
+            end_time_ns=0,
+        )
+        return OTELTrace(trace_id=trace_id, root_span=root, total_spans=0, duration_ms=0.0)
+
     # Generate deterministic trace_id
-    first = entities[0] if entities else None
-    conv_id = ""
-    if first:
-        conv_id = first.properties.get("conversation_id", "") or first.entity_id
+    first = entities[0]
+    conv_id = first.properties.get("conversation_id", "") or first.entity_id
     trace_id = _md5_hex(conv_id)
 
     # Phase 1: create spans/events per rule
@@ -309,6 +318,17 @@ def _flatten_spans(span: OTELSpan) -> list[OTELSpan]:
     return result
 
 
+def _typed_attribute_value(v: object) -> dict:
+    """Convert a Python value to the appropriate OTLP attribute value type."""
+    if isinstance(v, bool):
+        return {"boolValue": v}
+    if isinstance(v, int):
+        return {"intValue": str(v)}
+    if isinstance(v, float):
+        return {"doubleValue": v}
+    return {"stringValue": str(v)}
+
+
 def _span_to_otlp(span: OTELSpan) -> dict:
     """Convert a single OTELSpan to OTLP JSON format."""
     status_code = 0  # UNSET
@@ -326,7 +346,7 @@ def _span_to_otlp(span: OTELSpan) -> dict:
         "startTimeUnixNano": str(span.start_time_ns),
         "endTimeUnixNano": str(span.end_time_ns),
         "attributes": [
-            {"key": k, "value": {"stringValue": str(v)}}
+            {"key": k, "value": _typed_attribute_value(v)}
             for k, v in span.attributes.items()
         ],
         "status": {"code": status_code},
@@ -339,7 +359,7 @@ def _span_to_otlp(span: OTELSpan) -> dict:
                 "name": evt["name"],
                 "timeUnixNano": str(evt["timeUnixNano"]),
                 "attributes": [
-                    {"key": k, "value": {"stringValue": str(v)}}
+                    {"key": k, "value": _typed_attribute_value(v)}
                     for k, v in evt.get("attributes", {}).items()
                 ],
             }
@@ -350,11 +370,17 @@ def _span_to_otlp(span: OTELSpan) -> dict:
 
 
 def to_otlp_json(
-    trace: OTELTrace, service_name: str, bot_name: str | None = None
+    trace: OTELTrace, service_name: str, bot_name: str | None = None, version: str = "1.0"
 ) -> dict:
     """Serialize trace to OTLP-compatible JSON structure."""
     effective_service_name = bot_name if bot_name else service_name
     flat_spans = _flatten_spans(trace.root_span)
+
+    # Resolve SDK version from trace attributes or fall back to spec version
+    sdk_version = version
+    root_attrs = trace.root_span.attributes if trace.root_span else {}
+    if root_attrs.get("telemetry.sdk.version"):
+        sdk_version = root_attrs["telemetry.sdk.version"]
 
     return {
         "resourceSpans": [
@@ -364,14 +390,26 @@ def to_otlp_json(
                         {
                             "key": "service.name",
                             "value": {"stringValue": effective_service_name},
-                        }
+                        },
+                        {
+                            "key": "telemetry.sdk.name",
+                            "value": {"stringValue": "mcs-otel-mapper"},
+                        },
+                        {
+                            "key": "telemetry.sdk.version",
+                            "value": {"stringValue": sdk_version},
+                        },
+                        {
+                            "key": "telemetry.sdk.language",
+                            "value": {"stringValue": "python"},
+                        },
                     ]
                 },
                 "scopeSpans": [
                     {
                         "scope": {
                             "name": "mcs-otel-mapper",
-                            "version": "1.0",
+                            "version": version,
                         },
                         "spans": [
                             _span_to_otlp(span) for span in flat_spans

@@ -12,7 +12,7 @@ import typer
 from loguru import logger
 
 from config_loader import load_default_mapping
-from models import AttributeMapping, OTELOperationName, OTELSpanKind, SpanMappingRule
+from models import OTELOperationName, SpanMappingRule
 from config_loader import load_default_mapping as _load_spec
 from parsers import _resolve_activities, parse_transcript
 
@@ -146,43 +146,14 @@ def analyze_content(source_label: str, content: str) -> FileStats | None:
 
 def analyze_file(path: Path) -> FileStats | None:
     """Analyze a single transcript file for valueType coverage."""
-    stats = FileStats(path=path)
-
     try:
         content = path.read_text(encoding="utf-8")
-        raw_activities = _resolve_activities(content)
     except Exception as e:
         logger.warning("Skipping {} — {}", path, e)
         return None
-
-    stats.activity_count = len(raw_activities)
-
-    # Parse for metadata
-    try:
-        transcript = parse_transcript(content)
-        stats.bot_name = transcript.bot_name
-        stats.conversation_id = transcript.conversation_id
-    except Exception as e:
-        logger.debug("Could not parse transcript metadata for {}: {}", path, e)
-
-    # Collect valueType info from raw activities
-    for raw in raw_activities:
-        vt = raw.get("valueType", "") or raw.get("name", "") or ""
-        if not vt:
-            continue
-
-        stats.value_type_counts[vt] = stats.value_type_counts.get(vt, 0) + 1
-
-        value = raw.get("value", {})
-        if isinstance(value, dict) and value:
-            props = set(value.keys())
-            if vt not in stats.value_type_props:
-                stats.value_type_props[vt] = set()
-            stats.value_type_props[vt].update(props)
-
-            if vt not in stats.value_type_samples:
-                stats.value_type_samples[vt] = value
-
+    stats = analyze_content(str(path), content)
+    if stats:
+        stats.path = path
     return stats
 
 
@@ -241,81 +212,72 @@ def _suggest_rule_id(value_type: str) -> str:
     return "".join(result)
 
 
-def _suggest_otel_op(value_type: str) -> str:
+def _suggest_otel_op(value_type: str) -> OTELOperationName:
     """Heuristic OTEL operation name for a valueType."""
     vt = value_type.lower()
     if "search" in vt or "retrieval" in vt or "knowledge" in vt:
-        return "OTELOperationName.knowledge_retrieval"
+        return OTELOperationName.knowledge_retrieval
     if "plan" in vt or "chain" in vt or "dialog" in vt or "tracing" in vt:
-        return "OTELOperationName.chain"
+        return OTELOperationName.chain
     if "tool" in vt or "step" in vt or "execute" in vt:
-        return "OTELOperationName.tool_execute"
+        return OTELOperationName.tool_execute
     if "error" in vt:
-        return "OTELOperationName.chain"
+        return OTELOperationName.chain
     if "topic" in vt or "redirect" in vt or "intent" in vt:
-        return "OTELOperationName.topic_classification"
+        return OTELOperationName.topic_classification
     if "server" in vt or "agent" in vt or "skill" in vt or "mcp" in vt:
-        return "OTELOperationName.create_agent"
-    return "OTELOperationName.chain"
+        return OTELOperationName.create_agent
+    return OTELOperationName.chain
+
+
+def suggest_mapping_rule_json(value_type: str, sample_props: set[str]) -> dict:
+    """Generate a SpanMappingRule as a config-compatible JSON dict."""
+    rule_id = _suggest_rule_id(value_type)
+    otel_op = _suggest_otel_op(value_type)
+    span_name = rule_id.replace("_", ".")
+
+    skip_props = {"timestamp", "actions", "steps", "toolDefinitions", "observation", "content"}
+    attribute_mappings = [
+        {"mcs_property": prop, "otel_attribute": f"copilot_studio.{prop}"}
+        for prop in sorted(sample_props)
+        if prop not in skip_props
+    ]
+
+    return {
+        "rule_id": rule_id,
+        "rule_name": value_type,
+        "description": f"Auto-suggested rule for {value_type}",
+        "mcs_entity_type": "trace_event",
+        "mcs_value_type": value_type,
+        "otel_operation_name": otel_op.value,
+        "otel_span_kind": "INTERNAL",
+        "span_name_template": span_name,
+        "parent_rule_id": "user_turn",
+        "attribute_mappings": attribute_mappings,
+    }
 
 
 def suggest_mapping_rule(value_type: str, sample_props: set[str]) -> str:
-    """Generate a copy-pasteable SpanMappingRule Python snippet."""
-    rule_id = _suggest_rule_id(value_type)
-    otel_op = _suggest_otel_op(value_type)
-    span_name = f'{rule_id.replace("_", ".")}'
+    """Generate a suggested mapping rule as formatted JSON config."""
+    rule = suggest_mapping_rule_json(value_type, sample_props)
+    return json.dumps(rule, indent=2)
 
-    # Build attribute mappings for each property
-    attr_lines = []
-    skip_props = {"timestamp", "actions", "steps", "toolDefinitions", "observation", "content"}
-    for prop in sorted(sample_props):
-        if prop in skip_props:
-            continue
-        otel_attr = f"copilot_studio.{prop}"
-        attr_lines.append(
-            f'                    AttributeMapping(\n'
-            f'                        mcs_property="{prop}",\n'
-            f'                        otel_attribute="{otel_attr}",\n'
-            f'                    ),'
-        )
 
-    attrs_block = "\n".join(attr_lines) if attr_lines else ""
-    mappings_section = (
-        f"                attribute_mappings=[\n{attrs_block}\n                ],"
-        if attrs_block
-        else "                attribute_mappings=[],"
-    )
-
-    return (
-        f'            SpanMappingRule(\n'
-        f'                rule_id="{rule_id}",\n'
-        f'                rule_name="{value_type}",\n'
-        f'                mcs_entity_type="trace_event",\n'
-        f'                mcs_value_type="{value_type}",\n'
-        f'                otel_operation_name={otel_op},\n'
-        f'                otel_span_kind=OTELSpanKind.INTERNAL,\n'
-        f'                span_name_template="{span_name}",\n'
-        f'                parent_rule_id="user_turn",\n'
-        f'{mappings_section}\n'
-        f'            ),'
-    )
+def suggest_attribute_mappings_json(props: set[str], mapped: set[str]) -> list[dict]:
+    """Generate AttributeMapping dicts for unmapped properties."""
+    unmapped = sorted(props - mapped - {"timestamp", "actions", "steps", "toolDefinitions", "observation", "content"})
+    return [
+        {"mcs_property": prop, "otel_attribute": f"copilot_studio.{prop}"}
+        for prop in unmapped
+    ]
 
 
 def suggest_attribute_mappings(props: set[str], mapped: set[str]) -> str:
-    """Generate AttributeMapping snippets for unmapped properties."""
-    unmapped = sorted(props - mapped - {"timestamp", "actions", "steps", "toolDefinitions", "observation", "content"})
-    if not unmapped:
+    """Generate suggested attribute mappings as formatted JSON config."""
+    mappings = suggest_attribute_mappings_json(props, mapped)
+    if not mappings:
         return ""
-
-    lines = []
-    for prop in unmapped:
-        lines.append(
-            f'                    AttributeMapping(\n'
-            f'                        mcs_property="{prop}",\n'
-            f'                        otel_attribute="copilot_studio.{prop}",\n'
-            f'                    ),'
-        )
-    return "\n".join(lines)
+    return json.dumps(mappings, indent=2)
 
 
 def render_markdown(
@@ -356,7 +318,7 @@ def render_markdown(
 
     lines.extend([
         "",
-        "> **Note:** `ConversationInfo` and `SessionInfo` are handled specially in `_extract_session_info()`,",
+        "> **Note:** `ConversationInfo` and `SessionInfo` are handled via `session_info_extraction` config,",
         "> not via `event_metadata`. They appear in the table below but are not \"untracked\" — they are",
         "> extracted into `MCSTranscript.session_info` and mapped via the `session_root` rule.",
         "",
@@ -417,14 +379,12 @@ def render_markdown(
 
             suggested = suggest_mapping_rule(vt, s.all_properties)
             lines.extend([
-                "**Suggested mapping rule:**",
-                "```python",
+                "**Suggested config rule (add to `config/default_mapping.json` rules):**",
+                "```json",
                 suggested,
                 "```",
                 "",
             ])
-
-    # Attribute mapping gaps for tracked types with rules
     types_with_gaps = {}
     for vt, s in stats.items():
         if s.has_mapping_rule and s.all_properties:
@@ -457,8 +417,8 @@ def render_markdown(
             suggested = suggest_attribute_mappings(s.all_properties, s.mapped_properties)
             if suggested:
                 lines.extend([
-                    "**Suggested attribute mappings:**",
-                    "```python",
+                    "**Suggested attribute mappings (add to rule's `attribute_mappings`):**",
+                    "```json",
                     suggested,
                     "```",
                     "",
@@ -488,8 +448,8 @@ def render_markdown(
             ])
             suggested = suggest_mapping_rule(vt, s.all_properties)
             lines.extend([
-                "**Suggested mapping rule:**",
-                "```python",
+                "**Suggested config rule (add to `config/default_mapping.json` rules):**",
+                "```json",
                 suggested,
                 "```",
                 "",

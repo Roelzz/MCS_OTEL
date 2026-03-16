@@ -111,3 +111,17 @@ class TestToOtlpJson:
         json_str = json.dumps(result)
         parsed = json.loads(json_str)
         assert parsed == result
+
+
+# ---------------------------------------------------------------------------
+# apply_mapping — edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestApplyMappingEdgeCases:
+    def test_empty_entities(self):
+        """apply_mapping returns empty trace for empty entity list."""
+        spec = load_default_mapping()
+        trace = apply_mapping([], spec)
+        assert trace.total_spans == 0
+        assert trace.root_span.name == "empty"
