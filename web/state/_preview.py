@@ -84,6 +84,17 @@ class PreviewMixin(rx.State, mixin=True):
         return self._rule_stats
 
     @rx.var(cache=True)
+    def selected_rule_attr_detail(self) -> list[dict]:
+        """Per-attribute fill detail for the selected rule (from mapping editor)."""
+        sel = getattr(self, "selected_rule_id", "")
+        if not sel or not self._rule_stats:
+            return []
+        for s in self._rule_stats:
+            if s.get("rule_id") == sel:
+                return s.get("attr_fill_detail", [])
+        return []
+
+    @rx.var(cache=True)
     def timeline_data(self) -> list[dict]:
         """Span data formatted for timeline/Gantt view."""
         if not self.preview_spans:
@@ -289,6 +300,24 @@ class PreviewMixin(rx.State, mixin=True):
             else:
                 fill_rate = 0.0
 
+            # Per-attribute fill detail
+            attr_fill_detail: list[dict] = []
+            if expected_attrs > 0 and matched_spans:
+                for am in rule.attribute_mappings:
+                    filled = sum(
+                        1 for s in matched_spans
+                        if s.get("attributes", {}).get(am.otel_attribute, "")
+                    )
+                    total = len(matched_spans)
+                    pct = round(filled / total * 100, 1) if total > 0 else 0.0
+                    attr_fill_detail.append({
+                        "otel_attribute": am.otel_attribute,
+                        "mcs_property": am.mcs_property,
+                        "filled_count": filled,
+                        "total_count": total,
+                        "fill_pct": pct,
+                    })
+
             vt = rule.mcs_value_type or rule.mcs_entity_type
             stats.append({
                 "rule_id": rule_id,
@@ -297,6 +326,7 @@ class PreviewMixin(rx.State, mixin=True):
                 "match_count": match_count,
                 "attr_count": expected_attrs,
                 "fill_rate": fill_rate,
+                "attr_fill_detail": attr_fill_detail,
             })
         return stats
 

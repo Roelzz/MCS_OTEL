@@ -10,6 +10,7 @@ from web.components import (
     entity_browser,
     session_dashboard,
     conversation_view,
+    rule_hierarchy,
     improve_page,
 )
 from web.components.span_tree import span_detail as _span_detail_import
@@ -74,7 +75,7 @@ def index_page() -> rx.Component:
                     value="session",
                 ),
                 rx.tabs.content(entity_browser(), value="entities"),
-                rx.tabs.content(_placeholder_tab("Rule Hierarchy Graph"), value="rule_graph"),
+                rx.tabs.content(rule_hierarchy(), value="rule_graph"),
                 rx.tabs.content(
                     rx.vstack(
                         rx.hstack(

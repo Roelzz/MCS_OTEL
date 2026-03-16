@@ -433,6 +433,105 @@ class MappingMixin(rx.State, mixin=True):
     def rule_validation_errors(self) -> dict[str, str]:
         return self._rule_validation_errors
 
+    @rx.var(cache=True)
+    def rule_hierarchy_nodes(self) -> list[dict]:
+        """React Flow nodes for rule hierarchy visualization."""
+        if not self.mapping_spec or "rules" not in self.mapping_spec:
+            return []
+        rules = self.mapping_spec["rules"]
+        # Build stat lookup
+        stat_map: dict[str, dict] = {}
+        for s in getattr(self, "_rule_stats", []):
+            stat_map[s.get("rule_id", "")] = s
+
+        # BFS-style layout: group by depth (root → children → grandchildren)
+        children_map: dict[str, list[str]] = {}
+        root_ids: list[str] = []
+        rule_by_id: dict[str, dict] = {}
+        for r in rules:
+            rid = r.get("rule_id", "")
+            rule_by_id[rid] = r
+            parent = r.get("parent_rule_id")
+            if r.get("is_root") or not parent:
+                root_ids.append(rid)
+            else:
+                children_map.setdefault(parent, []).append(rid)
+
+        nodes: list[dict] = []
+        x_spacing = 280
+        y_spacing = 100
+        # BFS to assign positions
+        queue = [(rid, 0) for rid in root_ids]
+        col_counts: dict[int, int] = {}
+        while queue:
+            rid, depth = queue.pop(0)
+            r = rule_by_id.get(rid)
+            if not r:
+                continue
+            row = col_counts.get(depth, 0)
+            col_counts[depth] = row + 1
+
+            vt = r.get("mcs_value_type", "") or r.get("mcs_entity_type", "")
+            op = r.get("otel_operation_name", "")
+            output_type = r.get("output_type", "span")
+            st = stat_map.get(rid, {})
+            match_count = st.get("match_count", -1)
+            fill_rate = st.get("fill_rate", 0.0)
+
+            # Color based on fill rate
+            if match_count < 0:
+                border_color = "#6b7280"
+            elif fill_rate >= 80:
+                border_color = "#22c55e"
+            elif fill_rate >= 50:
+                border_color = "#f59e0b"
+            else:
+                border_color = "#ef4444"
+
+            is_event = output_type == "event"
+            label = f"{rid[:12]}\n{vt} → {op}"
+            match_label = f" [{match_count}]" if match_count >= 0 else ""
+
+            nodes.append({
+                "id": f"rule_{rid}",
+                "data": {"label": f"{label}{match_label}"},
+                "position": {"x": depth * x_spacing + 50, "y": row * y_spacing + 50},
+                "draggable": False,
+                "style": {
+                    "background": "#fef9c3" if is_event else "#f0fdf4",
+                    "border": f"2px solid {border_color}",
+                    "borderRadius": "8px",
+                    "fontSize": "11px",
+                    "padding": "8px",
+                    "width": "240px",
+                    "whiteSpace": "pre-line",
+                    "minHeight": "0",
+                },
+            })
+            for child_id in children_map.get(rid, []):
+                queue.append((child_id, depth + 1))
+
+        return nodes
+
+    @rx.var(cache=True)
+    def rule_hierarchy_edges(self) -> list[dict]:
+        """React Flow edges for rule parent-child relationships."""
+        if not self.mapping_spec or "rules" not in self.mapping_spec:
+            return []
+        edges: list[dict] = []
+        for r in self.mapping_spec["rules"]:
+            parent = r.get("parent_rule_id")
+            if parent:
+                rid = r.get("rule_id", "")
+                edges.append({
+                    "id": f"rule_{parent}->rule_{rid}",
+                    "source": f"rule_{parent}",
+                    "target": f"rule_{rid}",
+                    "style": {"stroke": "#22c55e", "strokeWidth": 1.5},
+                    "markerEnd": {"type": "arrowclosed", "color": "#22c55e"},
+                })
+        return edges
+
     def select_connection_rule(self, rule_id: str):
         """Select a connection edge to show its detail."""
         self.selected_connection_rule_id = (
