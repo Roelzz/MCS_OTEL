@@ -70,6 +70,48 @@ class UploadMixin(rx.State, mixin=True):
                 ]
         return []
 
+    @rx.var(cache=True)
+    def session_context(self) -> dict:
+        """Transcript session_info for the session dashboard."""
+        if not self.transcript:
+            return {}
+        return self.transcript.get("session_info", {})
+
+    @rx.var(cache=True)
+    def has_session_context(self) -> bool:
+        return bool(self.session_context)
+
+    @rx.var(cache=True)
+    def entity_type_distribution(self) -> list[dict]:
+        """Entity count per value_type for charting."""
+        if not self.entities:
+            return []
+        counts: dict[str, int] = {}
+        for e in self.entities:
+            vt = e.get("value_type", "") or e.get("entity_type", "unknown")
+            counts[vt] = counts.get(vt, 0) + 1
+        return [{"name": k, "count": v} for k, v in sorted(counts.items(), key=lambda x: -x[1])]
+
+    @rx.var(cache=True)
+    def conversation_turns(self) -> list[dict]:
+        """Entities representing conversation turns, ordered by turn_index."""
+        if not self.entities:
+            return []
+        turns = []
+        for e in self.entities:
+            if e.get("entity_type") != "turn":
+                continue
+            props = e.get("properties", {})
+            turns.append({
+                "turn_index": props.get("turn_index", 0),
+                "user_msg": props.get("user_text", ""),
+                "bot_msg": props.get("bot_text", ""),
+                "topic_name": props.get("topic_name", ""),
+                "action_type": props.get("action_type", ""),
+                "is_greeting": props.get("is_greeting", False),
+            })
+        return sorted(turns, key=lambda t: t.get("turn_index", 0))
+
     def set_entity_type_filter(self, value_type: str):
         """Set entity type filter, or clear if same type clicked again."""
         if self.entity_type_filter == value_type:

@@ -8,6 +8,8 @@ from web.components import (
     span_tree,
     export_panel,
     entity_browser,
+    session_dashboard,
+    conversation_view,
     improve_page,
 )
 from web.state import State  # noqa: F401 — must import so Reflex registers state
@@ -59,7 +61,16 @@ def index_page() -> rx.Component:
                     size="2",
                 ),
                 rx.tabs.content(_overview_tab(), value="overview"),
-                rx.tabs.content(_placeholder_tab("Session Dashboard"), value="session"),
+                rx.tabs.content(
+                    rx.vstack(
+                        session_dashboard(),
+                        rx.separator(),
+                        conversation_view(),
+                        spacing="4",
+                        width="100%",
+                    ),
+                    value="session",
+                ),
                 rx.tabs.content(entity_browser(), value="entities"),
                 rx.tabs.content(_placeholder_tab("Rule Hierarchy Graph"), value="rule_graph"),
                 rx.tabs.content(_placeholder_tab("Timeline / Gantt View"), value="timeline"),
