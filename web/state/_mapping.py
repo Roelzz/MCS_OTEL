@@ -157,20 +157,49 @@ def _build_flow_nodes() -> list[dict]:
     return nodes
 
 
-def _build_flow_edges(connections: list[dict]) -> list[dict]:
-    """Build React Flow edges from connection list."""
+def _build_flow_edges(
+    connections: list[dict], rules: list[dict] | None = None
+) -> list[dict]:
+    """Build React Flow edges from connection list, with attr labels from rules."""
+    # Build rule lookup by rule_id
+    rule_map: dict[str, dict] = {}
+    if rules:
+        for r in rules:
+            rule_map[r.get("rule_id", "")] = r
+
     edges: list[dict] = []
     for conn in connections:
         source = f"mcs_{conn['mcs_entity_type']}"
         target = f"otel_{conn['otel_target']}"
-        edges.append({
+        rule_id = conn.get("rule_id", "")
+
+        # Build label from attribute mappings
+        label = ""
+        rule = rule_map.get(rule_id)
+        if rule:
+            attrs = rule.get("attribute_mappings", [])
+            count = len(attrs)
+            if count > 0:
+                names = [a.get("otel_attribute", "").split(".")[-1] for a in attrs[:2]]
+                preview = ", ".join(n for n in names if n)
+                suffix = "..." if count > 2 else ""
+                label = f"{count} attrs: {preview}{suffix}"
+
+        edge: dict = {
             "id": f"{source}->{target}",
             "source": source,
             "target": target,
             "animated": True,
             "style": {"stroke": "#22c55e", "strokeWidth": 2},
             "markerEnd": {"type": "arrowclosed", "color": "#22c55e"},
-        })
+            "data": {"ruleId": rule_id},
+        }
+        if label:
+            edge["label"] = label
+            edge["labelStyle"] = {"fontSize": "10px", "fill": "#6b7280"}
+            edge["labelBgStyle"] = {"fill": "#fff", "fillOpacity": 0.85}
+            edge["labelBgPadding"] = [4, 2]
+        edges.append(edge)
     return edges
 
 
@@ -190,6 +219,7 @@ class MappingMixin(rx.State, mixin=True):
     # React Flow state
     flow_nodes: list[dict] = DEFAULT_FLOW_NODES
     flow_edges: list[dict] = []
+    selected_connection_rule_id: str = ""
 
     def toggle_rule_collapse(self, rule_id: str):
         if rule_id in self._collapsed_rules:
@@ -376,7 +406,9 @@ class MappingMixin(rx.State, mixin=True):
         self.connect_to_otel(otel_target)
 
         # Rebuild flow edges
-        self.flow_edges = _build_flow_edges(self.connections)
+        self.flow_edges = _build_flow_edges(
+            self.connections, self.mapping_spec.get("rules") if self.mapping_spec else None
+        )
 
     def on_flow_edge_delete(self, edge_id: str):
         """Handle edge deletion from React Flow."""
@@ -393,11 +425,46 @@ class MappingMixin(rx.State, mixin=True):
                 self.remove_connection(conn["rule_id"])
                 break
 
-        self.flow_edges = _build_flow_edges(self.connections)
+        self.flow_edges = _build_flow_edges(
+            self.connections, self.mapping_spec.get("rules") if self.mapping_spec else None
+        )
 
     @rx.var(cache=True)
     def rule_validation_errors(self) -> dict[str, str]:
         return self._rule_validation_errors
+
+    def select_connection_rule(self, rule_id: str):
+        """Select a connection edge to show its detail."""
+        self.selected_connection_rule_id = (
+            rule_id if self.selected_connection_rule_id != rule_id else ""
+        )
+
+    @rx.var(cache=True)
+    def selected_connection_detail(self) -> list[dict]:
+        """Attribute mappings for the selected connection's rule."""
+        if not self.selected_connection_rule_id or not self.mapping_spec:
+            return []
+        for rule in self.mapping_spec.get("rules", []):
+            if rule.get("rule_id") == self.selected_connection_rule_id:
+                result = []
+                for am in rule.get("attribute_mappings", []):
+                    result.append({
+                        "mcs_property": am.get("mcs_property", ""),
+                        "otel_attribute": am.get("otel_attribute", ""),
+                        "transform": am.get("transform", "direct"),
+                    })
+                return result
+        return []
+
+    @rx.var(cache=True)
+    def selected_connection_rule_name(self) -> str:
+        """Name of the selected connection's rule."""
+        if not self.selected_connection_rule_id or not self.mapping_spec:
+            return ""
+        for rule in self.mapping_spec.get("rules", []):
+            if rule.get("rule_id") == self.selected_connection_rule_id:
+                return rule.get("rule_name", rule.get("rule_id", ""))
+        return ""
 
     def select_rule(self, rule_id: str):
         """Select a rule for editing."""
@@ -485,7 +552,10 @@ class MappingMixin(rx.State, mixin=True):
                 "otel_target": rule.otel_operation_name.value,
                 "rule_id": rule.rule_id,
             })
-        self.flow_edges = _build_flow_edges(self.connections)
+        self.flow_edges = _build_flow_edges(
+            self.connections,
+            [r.model_dump() for r in spec.rules] if spec.rules else None,
+        )
 
     def load_defaults(self):
         """Populate from config/default_mapping.json, also populate connections and flow edges."""

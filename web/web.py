@@ -7,6 +7,7 @@ from web.components import (
     mapping_editor,
     span_tree,
     export_panel,
+    entity_browser,
     improve_page,
 )
 from web.state import State  # noqa: F401 — must import so Reflex registers state
@@ -14,27 +15,62 @@ from web.state import State  # noqa: F401 — must import so Reflex registers st
 _BODY_FONT = "Outfit, sans-serif"
 
 
+def _overview_tab() -> rx.Component:
+    """Existing linear flow: Upload → Connection → Rules → Spans → Export."""
+    return rx.vstack(
+        upload_panel(),
+        rx.separator(),
+        connection_view(),
+        rx.separator(),
+        mapping_editor(),
+        rx.separator(),
+        span_tree(),
+        rx.separator(),
+        export_panel(),
+        spacing="4",
+        width="100%",
+    )
+
+
+def _placeholder_tab(name: str) -> rx.Component:
+    return rx.box(
+        rx.callout(
+            f"{name} — coming soon.",
+            icon="construction",
+            size="2",
+        ),
+        padding="2em",
+        width="100%",
+    )
+
+
 def index_page() -> rx.Component:
     return rx.vstack(
         navbar(),
         rx.box(
-            rx.vstack(
-                upload_panel(),
-                rx.separator(),
-                connection_view(),
-                rx.separator(),
-                mapping_editor(),
-                rx.separator(),
-                span_tree(),
-                rx.separator(),
-                export_panel(),
-                spacing="4",
+            rx.tabs.root(
+                rx.tabs.list(
+                    rx.tabs.trigger("Overview", value="overview"),
+                    rx.tabs.trigger("Session", value="session"),
+                    rx.tabs.trigger("Entities", value="entities"),
+                    rx.tabs.trigger("Rule Graph", value="rule_graph"),
+                    rx.tabs.trigger("Timeline", value="timeline"),
+                    rx.tabs.trigger("Registry", value="registry"),
+                    size="2",
+                ),
+                rx.tabs.content(_overview_tab(), value="overview"),
+                rx.tabs.content(_placeholder_tab("Session Dashboard"), value="session"),
+                rx.tabs.content(entity_browser(), value="entities"),
+                rx.tabs.content(_placeholder_tab("Rule Hierarchy Graph"), value="rule_graph"),
+                rx.tabs.content(_placeholder_tab("Timeline / Gantt View"), value="timeline"),
+                rx.tabs.content(_placeholder_tab("Event Registry"), value="registry"),
+                default_value="overview",
                 width="100%",
-                max_width="1200px",
-                margin_x="auto",
-                padding="1em",
             ),
             width="100%",
+            max_width="1200px",
+            margin_x="auto",
+            padding="1em",
         ),
         width="100%",
         min_height="100vh",

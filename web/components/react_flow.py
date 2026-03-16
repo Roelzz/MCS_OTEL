@@ -17,6 +17,7 @@ class MappingFlow(NoSSRComponent):
     initial_edges: rx.Var[list[dict]]
     on_connect_edge: EventHandler[passthrough_event_spec(dict)]
     on_delete_edge: EventHandler[passthrough_event_spec(str)]
+    on_edge_click: EventHandler[passthrough_event_spec(str)]
 
     def add_custom_code(self) -> list[str]:
         return ["import '@xyflow/react/dist/style.css';"]
@@ -52,10 +53,15 @@ class MappingFlow(NoSSRComponent):
             "        if (props.onDeleteEdge) props.onDeleteEdge(r.id);\n"
             "      });\n"
             "    }, [props.onDeleteEdge]);\n"
+            "    const handleEdgeClick = useCallback((event, edge) => {\n"
+            "      var ruleId = (edge.data && edge.data.ruleId) || '';\n"
+            "      if (props.onEdgeClick) props.onEdgeClick(ruleId);\n"
+            "    }, [props.onEdgeClick]);\n"
             "    return createElement(ReactFlow, {\n"
             "      nodes, edges,\n"
             "      onConnect: handleConnect,\n"
             "      onEdgesChange: handleEdgesChange,\n"
+            "      onEdgeClick: handleEdgeClick,\n"
             "      nodesDraggable: false,\n"
             "      nodesConnectable: true,\n"
             "      fitView: true,\n"
