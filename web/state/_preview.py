@@ -13,9 +13,48 @@ class PreviewMixin(rx.State, mixin=True):
     preview_duration_ms: float = 0.0
     preview_total_events: int = 0
     selected_span_id: str = ""
+    span_filter_text: str = ""
+    preview_loading: bool = False
     # Per-rule match stats after preview
     _rule_stats: list[dict] = []
     _cached_otlp: str = ""
+
+    @rx.var(cache=True)
+    def total_span_count(self) -> int:
+        return len(self.preview_spans)
+
+    @rx.var(cache=True)
+    def filtered_preview_spans(self) -> list[dict]:
+        if not self.span_filter_text:
+            return self.preview_spans
+        q = self.span_filter_text.lower()
+        matched_ids: set[str] = set()
+        for span in self.preview_spans:
+            if q in span.get("name", "").lower():
+                matched_ids.add(span.get("span_id", ""))
+        # Include parent spans to maintain tree context
+        result = []
+        parent_stack: list[str] = []
+        for span in self.preview_spans:
+            depth = span.get("depth", 0)
+            span_id = span.get("span_id", "")
+            # Maintain parent stack
+            while len(parent_stack) > depth:
+                parent_stack.pop()
+            if span_id in matched_ids:
+                # Add missing ancestors
+                for pi, ps in enumerate(parent_stack):
+                    if not any(r.get("span_id") == ps for r in result):
+                        for orig in self.preview_spans:
+                            if orig.get("span_id") == ps:
+                                result.append(orig)
+                                break
+                result.append(span)
+            if len(parent_stack) <= depth:
+                parent_stack.append(span_id)
+            else:
+                parent_stack[depth] = span_id
+        return result
 
     @rx.var
     def selected_span_detail(self) -> dict:
@@ -45,10 +84,12 @@ class PreviewMixin(rx.State, mixin=True):
 
     def refresh_preview(self):
         """Apply mapping to entities, flatten tree, update state."""
+        self.preview_loading = True
         if not self.entities or not self.mapping_spec:
             self.preview_spans = []
             self._rule_stats = []
             self._cached_otlp = ""
+            self.preview_loading = False
             return
 
         try:
@@ -78,6 +119,8 @@ class PreviewMixin(rx.State, mixin=True):
             self.preview_spans = []
             self._rule_stats = []
             self._cached_otlp = ""
+        finally:
+            self.preview_loading = False
 
     def _flatten_tree(self, span: OTELSpan, depth: int) -> list[dict]:
         """Recursively flatten span tree with depth metadata, including events."""
