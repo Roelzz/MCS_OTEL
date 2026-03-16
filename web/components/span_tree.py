@@ -1,5 +1,6 @@
 import reflex as rx
 
+from web.components.timeline import timeline_view
 from web.state import State
 
 
@@ -144,7 +145,7 @@ def _attr_row(attr: rx.Var[dict]) -> rx.Component:
     )
 
 
-def _span_detail() -> rx.Component:
+def span_detail() -> rx.Component:
     """Detail panel for the selected span."""
     detail = State.selected_span_detail
     return rx.cond(
@@ -310,6 +311,24 @@ def span_tree() -> rx.Component:
                 ),
             ),
             rx.spacer(),
+            # Tree / Timeline toggle
+            rx.hstack(
+                rx.button(
+                    rx.icon("list-tree", size=14),
+                    "Tree",
+                    size="1",
+                    variant=rx.cond(State.span_view_mode == "tree", "solid", "outline"),
+                    on_click=State.set_span_view_mode("tree"),
+                ),
+                rx.button(
+                    rx.icon("gantt-chart", size=14),
+                    "Timeline",
+                    size="1",
+                    variant=rx.cond(State.span_view_mode == "timeline", "solid", "outline"),
+                    on_click=State.set_span_view_mode("timeline"),
+                ),
+                spacing="1",
+            ),
             rx.button(
                 "Refresh",
                 on_click=State.refresh_preview,
@@ -361,7 +380,7 @@ def span_tree() -> rx.Component:
             ),
             rx.fragment(),
         ),
-        # Span tree
+        # Span tree or timeline
         rx.cond(
             State.preview_loading,
             rx.center(
@@ -370,24 +389,30 @@ def span_tree() -> rx.Component:
                 padding="2em",
             ),
             rx.cond(
-                State.filtered_preview_spans.length() > 0,
-                rx.vstack(
-                    rx.foreach(State.filtered_preview_spans, _span_row),
-                    spacing="0",
-                    width="100%",
-                    border="1px solid var(--gray-a4)",
-                    border_radius="var(--radius-2)",
-                    padding="0.5em",
-                ),
-                rx.text(
-                    "Upload a transcript and refresh to see trace preview.",
-                    size="2",
-                    color="var(--gray-9)",
+                State.span_view_mode == "timeline",
+                # Timeline view
+                timeline_view(),
+                # Tree view
+                rx.cond(
+                    State.filtered_preview_spans.length() > 0,
+                    rx.vstack(
+                        rx.foreach(State.filtered_preview_spans, _span_row),
+                        spacing="0",
+                        width="100%",
+                        border="1px solid var(--gray-a4)",
+                        border_radius="var(--radius-2)",
+                        padding="0.5em",
+                    ),
+                    rx.text(
+                        "Upload a transcript and refresh to see trace preview.",
+                        size="2",
+                        color="var(--gray-9)",
+                    ),
                 ),
             ),
         ),
         # Span detail panel
-        _span_detail(),
+        span_detail(),
         spacing="3",
         width="100%",
         padding="1em",
