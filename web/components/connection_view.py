@@ -4,11 +4,46 @@ from web.components.react_flow import mapping_flow
 from web.state import State
 
 
+def _import_dialog() -> rx.Component:
+    return rx.dialog.root(
+        rx.dialog.trigger(
+            rx.button("Import Mapping", size="2", variant="outline"),
+        ),
+        rx.dialog.content(
+            rx.dialog.title("Import Mapping"),
+            rx.dialog.description("Paste a mapping JSON specification below."),
+            rx.text_area(
+                value=State.import_json_text,
+                on_change=State.set_import_json_text,
+                placeholder='{"version": "1.0", "name": "...", "rules": [...]}',
+                rows="10",
+                width="100%",
+            ),
+            rx.flex(
+                rx.dialog.close(
+                    rx.button("Cancel", variant="soft", color_scheme="gray"),
+                ),
+                rx.dialog.close(
+                    rx.button(
+                        "Import",
+                        on_click=State.import_mapping(State.import_json_text),
+                    ),
+                ),
+                spacing="3",
+                justify="end",
+                width="100%",
+                margin_top="1em",
+            ),
+        ),
+    )
+
+
 def connection_view() -> rx.Component:
     return rx.vstack(
         rx.hstack(
             rx.heading("Connection Mapping", size="4"),
             rx.spacer(),
+            _import_dialog(),
             rx.button(
                 "Load Defaults",
                 on_click=State.load_defaults,

@@ -107,6 +107,15 @@ def _to_nanoseconds(ts: int | float) -> int:
     return ts_int
 
 
+def _find_best_parent(candidates: list[OTELSpan], timestamp_ns: int) -> OTELSpan:
+    """Find closest parent span with start_time <= timestamp."""
+    best = None
+    for p in candidates:
+        if p.start_time_ns <= timestamp_ns or best is None:
+            best = p
+    return best or candidates[0]
+
+
 def _matches_rule(entity: MCSEntity, rule: SpanMappingRule) -> bool:
     """Check if an entity matches a span mapping rule."""
     if entity.entity_type != rule.mcs_entity_type:
@@ -234,14 +243,9 @@ def apply_mapping(
             continue
 
         for child_span in rule_spans[rule.rule_id]:
-            # Find best parent: closest parent span whose start_time <= child start_time
-            best_parent: OTELSpan | None = None
-            for p in parent_candidates:
-                if p.start_time_ns <= child_span.start_time_ns or best_parent is None:
-                    best_parent = p
-            if not best_parent:
-                best_parent = parent_candidates[0]
-
+            best_parent = _find_best_parent(
+                parent_candidates, child_span.start_time_ns
+            )
             child_span.parent_span_id = best_parent.span_id
             best_parent.children.append(child_span)
 
@@ -271,7 +275,10 @@ def apply_mapping(
     for evt in pending_events:
         parent_rule_id = evt["parent_rule_id"]
         parent_candidates = rule_spans.get(parent_rule_id, []) if parent_rule_id else []
-        target_span = parent_candidates[0] if parent_candidates else root_span
+        if parent_candidates:
+            target_span = _find_best_parent(parent_candidates, evt["timestamp_ns"])
+        else:
+            target_span = root_span
         target_span.events.append({
             "name": evt["name"],
             "timeUnixNano": evt["timestamp_ns"],
@@ -279,11 +286,15 @@ def apply_mapping(
         })
 
     # Mark parent spans as ERROR when they contain error events
+    error_names = set(spec.error_event_names)
     for evt in pending_events:
-        if evt["name"] in ("error", "error_code"):
+        if evt["name"] in error_names:
             parent_rule_id = evt["parent_rule_id"]
             parent_candidates = rule_spans.get(parent_rule_id, []) if parent_rule_id else []
-            target_span = parent_candidates[0] if parent_candidates else root_span
+            if parent_candidates:
+                target_span = _find_best_parent(parent_candidates, evt["timestamp_ns"])
+            else:
+                target_span = root_span
             target_span.status = "ERROR"
 
     # Adjust root span timing to cover all children

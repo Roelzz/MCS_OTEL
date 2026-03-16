@@ -104,6 +104,20 @@ class TestMappingModels:
         assert spec2.rules[0].rule_id == "r1"
         assert len(spec2.rules[0].attribute_mappings) == 1
 
+    def test_error_event_names_default(self):
+        spec = MappingSpecification()
+        assert spec.error_event_names == ["error", "error_code"]
+
+    def test_error_event_names_custom(self):
+        spec = MappingSpecification(error_event_names=["fatal", "panic"])
+        assert spec.error_event_names == ["fatal", "panic"]
+
+    def test_error_event_names_roundtrip(self):
+        spec = MappingSpecification(error_event_names=["custom_err"])
+        data = spec.model_dump()
+        spec2 = MappingSpecification(**data)
+        assert spec2.error_event_names == ["custom_err"]
+
     def test_mapping_spec_json_matches_format(self):
         spec = MappingSpecification(
             rules=[
