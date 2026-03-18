@@ -181,6 +181,8 @@ class UploadMixin(rx.State, mixin=True):
                     t, bot_content=self.bot_content, spec=spec
                 )
                 self.entities = [e.model_dump() for e in entities]
+                if self.mapping_spec:
+                    self.refresh_preview()
         except (yaml.YAMLError, ValueError) as e:
             self.upload_error = f"botContent error: {e}"
         except Exception as e:
@@ -209,6 +211,8 @@ class UploadMixin(rx.State, mixin=True):
             )
             self.entities = [e.model_dump() for e in entities]
             self.upload_error = ""
+            if self.mapping_spec:
+                self.refresh_preview()
             return True
         except (json.JSONDecodeError, ValueError) as e:
             self.upload_error = str(e)
