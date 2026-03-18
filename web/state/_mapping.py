@@ -760,10 +760,11 @@ class MappingMixin(rx.State, mixin=True):
         )
 
     def load_defaults(self):
-        """Populate from config/default_mapping.json, also populate connections and flow edges."""
+        """Populate from config/mappings/default.json, also populate connections and flow edges."""
         spec = load_default_mapping()
         self.mapping_spec = spec.model_dump()
         self._rebuild_connections(spec)
+        self.current_step = "connections"
         return rx.toast("Default mapping loaded")
 
     def import_mapping(self, json_str: str):
@@ -773,6 +774,7 @@ class MappingMixin(rx.State, mixin=True):
             spec = MappingSpecification(**data)
             self.mapping_spec = spec.model_dump()
             self._rebuild_connections(spec)
+            self.current_step = "connections"
             return rx.toast("Mapping imported")
         except (json.JSONDecodeError, pydantic.ValidationError) as e:
             from log import logger

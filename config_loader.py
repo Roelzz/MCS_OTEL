@@ -7,7 +7,8 @@ from log import logger
 from models import MappingSpecification
 
 CONFIG_DIR = Path(__file__).parent / "config"
-DEFAULT_MAPPING_PATH = CONFIG_DIR / "default_mapping.json"
+MAPPINGS_DIR = CONFIG_DIR / "mappings"
+DEFAULT_MAPPING_PATH = MAPPINGS_DIR / "default.json"
 OTEL_ATTRIBUTES_PATH = CONFIG_DIR / "otel_attributes.json"
 
 
@@ -28,8 +29,41 @@ def load_mapping_spec(path: str | Path) -> MappingSpecification:
 
 
 def load_default_mapping() -> MappingSpecification:
-    """Load from config/default_mapping.json."""
+    """Load from config/mappings/default.json."""
     return load_mapping_spec(DEFAULT_MAPPING_PATH)
+
+
+def list_mappings() -> list[dict]:
+    """Scan MAPPINGS_DIR and return metadata for each mapping file."""
+    MAPPINGS_DIR.mkdir(parents=True, exist_ok=True)
+    result = []
+    for path in sorted(MAPPINGS_DIR.glob("*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            result.append({
+                "name": path.stem,
+                "path": str(path),
+                "version": data.get("version", ""),
+                "rule_count": len(data.get("rules", [])),
+            })
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning("Skipping invalid mapping file {}: {}", path.name, e)
+    return result
+
+
+def load_mapping_by_name(name: str) -> MappingSpecification:
+    """Load a mapping from MAPPINGS_DIR by stem name."""
+    path = MAPPINGS_DIR / f"{name}.json"
+    return load_mapping_spec(path)
+
+
+def delete_mapping_file(name: str) -> None:
+    """Delete a mapping file from MAPPINGS_DIR."""
+    path = MAPPINGS_DIR / f"{name}.json"
+    if not path.exists():
+        raise FileNotFoundError(f"Mapping '{name}' not found")
+    path.unlink()
+    logger.info("Deleted mapping file: {}", path)
 
 
 def save_mapping_spec(spec: MappingSpecification, path: str | Path) -> None:

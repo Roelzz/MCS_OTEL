@@ -711,24 +711,3 @@ def improve_dashboard() -> rx.Component:
     )
 
 
-def improve_page() -> rx.Component:
-    """Full page layout for /improve route."""
-    from web.components.navbar import navbar
-
-    return rx.vstack(
-        navbar(),
-        rx.box(
-            rx.vstack(
-                improve_dashboard(),
-                spacing="4",
-                width="100%",
-                max_width="1200px",
-                margin_x="auto",
-                padding="1em",
-            ),
-            width="100%",
-        ),
-        width="100%",
-        min_height="100vh",
-        spacing="0",
-    )

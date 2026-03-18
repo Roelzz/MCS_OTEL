@@ -266,8 +266,8 @@ class ImproveMixin(rx.State, mixin=True):
             # Generate diff
             result = subprocess.run(
                 ["diff", "-u",
-                 "--label", "a/config/default_mapping.json",
-                 "--label", "b/config/default_mapping.json",
+                 "--label", "a/config/mappings/default.json",
+                 "--label", "b/config/mappings/default.json",
                  str(current_path), str(proposed_path)],
                 capture_output=True,
                 text=True,
@@ -299,12 +299,12 @@ class ImproveMixin(rx.State, mixin=True):
             from models import MappingSpecification
             proposed = MappingSpecification.model_validate(self._proposed_spec)
             save_mapping_spec(proposed, DEFAULT_MAPPING_PATH)
-            self.apply_results = {"config/default_mapping.json": True}
+            self.apply_results = {"config/mappings/default.json": True}
             self.improve_progress = "Applied spec changes to config/default_mapping.json"
             self.improve_step = "applied"
         except Exception as e:
             logger.error("Failed to save spec: {}", e)
-            self.apply_results = {"config/default_mapping.json": False}
+            self.apply_results = {"config/mappings/default.json": False}
             self.improve_progress = f"Failed to apply: {e}"
 
     async def rerun_verification(self):
