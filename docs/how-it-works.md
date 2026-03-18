@@ -1,375 +1,944 @@
 # How MCS-OTEL Works
 
-## What is this?
+MCS-OTEL converts Microsoft Copilot Studio conversation transcripts into OpenTelemetry (OTEL) traces. Every step — parsing, entity extraction, enrichment, rule matching, and OTLP export — is driven by a single JSON config file. For setup instructions, see the [README](../README.md).
 
-MCS-OTEL takes the conversation logs that Microsoft Copilot Studio produces and converts them into a standard observability format called OpenTelemetry (OTEL). Think of it as a translator: Copilot Studio speaks one language (its own internal transcript format), and monitoring tools like Jaeger, Datadog, or Azure Monitor speak another (OTEL). This project bridges the gap so you can actually see what your chatbot is doing under the hood.
+---
 
-## The problem
+## 1. Primer: MCS Transcripts
 
-Microsoft Copilot Studio is a platform for building AI chatbots. When users talk to your bot, Copilot Studio records everything that happened in a **transcript** — a detailed log of the conversation. The problem? These transcripts are a wall of raw JSON. There's no built-in way to:
+Microsoft Copilot Studio records every conversation as a **transcript** — a JSON array of **activities**. Each activity represents something that happened: a user message, a bot response, or an internal trace event (knowledge search, plan execution, error, etc.).
 
-- See how long each step took
-- Understand why the bot chose a particular answer
-- Track which knowledge sources were searched
-- Spot errors buried in nested data
-- Compare performance across conversations
+Activities have a `type` field (`message`, `trace`, or `event`) and trace/event activities carry a `valueType` identifying the specific event kind (e.g., `DynamicPlanReceived`, `ErrorTraceData`). The `value` field contains the event's payload — often deeply nested JSON.
 
-Observability tools solve exactly this — but they expect data in OTEL format. Copilot Studio doesn't export OTEL. So we built the translator.
-
-## The big picture
-
-```
-                        MCS-OTEL Pipeline
-                        =================
-
-  ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-  │  Copilot      │     │              │     │              │
-  │  Studio       │────>│   Parse &    │────>│   Map to     │
-  │  Transcript   │     │   Extract    │     │   OTEL Spans │
-  │  (JSON/CSV)   │     │   Entities   │     │              │
-  └──────────────┘     └──────────────┘     └──────┬───────┘
-                                                    │
-                                                    v
-                                            ┌──────────────┐
-                                            │  OTLP JSON   │
-                                            │  (ready for  │
-                                            │  Jaeger etc.) │
-                                            └──────────────┘
-```
-
-The pipeline has three stages:
-
-1. **Parse** — Read the raw transcript JSON and break it into individual activities
-2. **Extract** — Turn activities into clean, normalized entities with flattened properties
-3. **Map** — Apply translation rules to convert entities into OTEL spans arranged in a tree
-
-## Key concepts explained
-
-### Transcript
-
-The raw conversation log from Copilot Studio. It's a JSON array of **activities** — every message, every internal event, every trace. A single conversation might produce 20-100 activities depending on complexity.
-
-Here's a simplified snippet from a real transcript:
-
-```json
-[
-  {
-    "type": "message",
-    "timestamp": 1771240860,
-    "from": {"name": "Test User", "role": 1},
-    "text": "What is the refund policy?"
-  },
-  {
-    "valueType": "DynamicPlanReceived",
-    "type": "event",
-    "timestamp": 1771240863,
-    "value": {
-      "steps": ["P:UniversalSearchTool"],
-      "isFinalPlan": false
+```mermaid
+erDiagram
+    Transcript ||--o{ Activity : contains
+    Activity {
+        string id
+        string type "message | trace | event"
+        int timestamp
+        string valueType "e.g. DynamicPlanReceived"
+        object value "event payload"
+        string text "message content"
+        object from "sender (role + name)"
+        string channelId "e.g. msteams"
+        object channelData "tenant info etc."
+        object conversation "conversation ID"
     }
-  }
-]
+    Activity ||--o| Value : carries
+    Value {
+        string varies "structure depends on valueType"
+    }
 ```
 
-The first activity is a user message. The second is an internal event — the bot's AI decided to search the knowledge base.
+Key activity types in a typical transcript:
 
-### Activities
+| type | valueType | Meaning |
+|------|-----------|---------|
+| `message` | — | User or bot message with `text` content |
+| `trace` | `SessionInfo` | Session metadata: outcome, duration, turn count |
+| `trace` | `ConversationInfo` | Locale, design mode flag |
+| `event` | `DynamicPlanReceived` | AI orchestrator created an execution plan |
+| `event` | `DynamicPlanStepTriggered` | A plan step started executing |
+| `event` | `DynamicPlanStepFinished` | A plan step completed with results |
+| `trace` | `DialogRedirect` | Topic/dialog routing change |
+| `trace` | `ErrorTraceData` | Error with code and message |
+| `trace` | `UniversalSearchToolTraceData` | Knowledge base search results |
+| `trace` | `DynamicServerInitialize` | MCP server connection established |
 
-Individual things that happened during the conversation. There are two kinds:
+---
 
-- **Messages** — what the user said and what the bot replied
-- **Trace events** — internal decisions the bot made (searching knowledge, executing a plan step, redirecting to a topic, encountering an error)
+## 2. Primer: OpenTelemetry Traces
 
-Each trace event has a `valueType` that identifies what kind of event it is. The project tracks 26 event types, including:
+OpenTelemetry represents work as **spans** arranged in a tree. Each span has a name, start/end time, key-value attributes, and optionally child spans and events. A **trace** is the root of that tree.
 
-| Event type | What it means |
-|-----------|--------------|
-| `DynamicPlanReceived` | The AI orchestrator created a plan to answer the user |
-| `DynamicPlanStepTriggered` | A specific step in that plan started executing |
-| `DynamicPlanStepFinished` | A step completed (includes results) |
-| `UniversalSearchToolTraceData` | The bot searched its knowledge base |
-| `DynamicServerInitialize` | An MCP server connection was established |
-| `DialogTracingInfo` | Topic/dialog routing information |
-| `ErrorTraceData` | Something went wrong |
-| `CSATSurveyResponse` | Customer satisfaction score |
-| `AIBuilderTraceData` | An AI Builder model or prompt was invoked |
-| `DynamicPlanStepBlocked` | A plan step was blocked by policy |
-| `KnowledgeTraceData` | Detailed knowledge retrieval diagnostics |
+The OTLP JSON wire format nests spans inside scope and resource containers:
 
-### Entities
+```mermaid
+flowchart TB
+    subgraph OTLP["OTLP JSON"]
+        RS["resourceSpans[0]"]
+        subgraph Resource["resource"]
+            SA["service.name = copilot-studio"]
+            SDK["telemetry.sdk.name = mcs-otel-mapper"]
+        end
+        subgraph SS["scopeSpans[0]"]
+            Scope["scope: mcs-otel-mapper v1.1"]
+            subgraph Spans["spans[]"]
+                S1["Span: invoke_agent Rex Bluebot"]
+                S2["Span: chat turn:1"]
+                S3["Span: chain plan"]
+                S4["..."]
+            end
+        end
+        RS --> Resource
+        RS --> SS
+    end
 
-Cleaned-up, normalized versions of activities. The parser takes raw activities and produces entities with a consistent structure:
+    style OTLP fill:#f5f5f5,stroke:#333
+    style Resource fill:#e8f4e8,stroke:#4a90d9
+    style Spans fill:#fff3e0,stroke:#e8a838
+```
 
-- A **session root** entity (overall conversation metadata)
-- **Turn** entities (each user question + bot response pair)
-- **Trace event** entities (one per tracked event type)
+Each span carries:
 
-Each entity has an ID, a type, a label, and a flat dictionary of **properties** — the important data extracted from the raw activity.
+| Field | Example |
+|-------|---------|
+| `traceId` | `a1b2c3d4...` (32 hex chars, shared across all spans) |
+| `spanId` | `e5f6a7b8...` (16 hex chars, unique per span) |
+| `parentSpanId` | Links child to parent |
+| `name` | `"chat turn:1"` |
+| `kind` | 1=INTERNAL, 2=SERVER, 3=CLIENT |
+| `startTimeUnixNano` | Nanosecond precision timestamp |
+| `endTimeUnixNano` | Nanosecond precision timestamp |
+| `attributes[]` | `[{key: "gen_ai.agent.name", value: {stringValue: "Rex Bluebot"}}]` |
+| `events[]` | Point-in-time annotations (errors, variable changes) |
+| `status` | UNSET (0), OK (1), or ERROR (2) |
 
-### Enrichment
+MCS-OTEL follows the [OpenTelemetry GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) for attribute naming — `gen_ai.operation.name`, `gen_ai.agent.name`, `gen_ai.tool.name`, etc.
 
-Raw transcript data is often deeply nested. For example, a `DynamicPlanStepFinished` event might have search results buried three levels deep:
+---
 
-```json
+## 3. High-Level Architecture
+
+### Full Pipeline
+
+```mermaid
+flowchart LR
+    Upload["Upload<br>JSON / CSV / YAML"]
+    Parse["Parse<br>parsers.py"]
+    Extract["Extract Entities<br>parsers.py"]
+    Enrich["Enrich<br>parsers.py"]
+    Map["Map to Spans<br>converter.py"]
+    Export["OTLP JSON<br>converter.py"]
+    Collector["Jaeger / Datadog<br>/ Azure Monitor"]
+
+    Upload --> Parse --> Extract --> Enrich --> Map --> Export --> Collector
+
+    style Upload fill:#4a90d9,color:white
+    style Parse fill:#5ba85b,color:white
+    style Extract fill:#5ba85b,color:white
+    style Enrich fill:#5ba85b,color:white
+    style Map fill:#e8a838,color:white
+    style Export fill:#e8a838,color:white
+    style Collector fill:#9b59b6,color:white
+```
+
+### Component Map
+
+```mermaid
+flowchart TB
+    subgraph Config["Config"]
+        CL["config_loader.py<br>(91 lines)"]
+        DM["config/default_mapping.json<br>(2163 lines)"]
+        CL --> DM
+    end
+
+    subgraph Core["Core Pipeline"]
+        MO["models.py<br>(354 lines)"]
+        PA["parsers.py<br>(727 lines)"]
+        CO["converter.py<br>(439 lines)"]
+        PA --> MO
+        CO --> MO
+    end
+
+    subgraph Improvement["Improvement Engine"]
+        AT["analyze_transcripts.py<br>(521 lines)"]
+        IM["improve.py<br>(876 lines)"]
+        AT --> PA
+        IM --> AT
+        IM --> CO
+    end
+
+    subgraph WebUI["Web UI (Reflex)"]
+        WW["web/web.py<br>(95 lines)"]
+        WC["web/components/<br>(12 files, ~2.6k lines)"]
+        WS["web/state/<br>(4 mixins, ~1.7k lines)"]
+        WW --> WC
+        WW --> WS
+        WS --> PA
+        WS --> CO
+    end
+
+    DM --> PA
+    DM --> CO
+
+    style Config fill:#f0e6ff,stroke:#9b59b6
+    style Core fill:#e8f4e8,stroke:#5ba85b
+    style Improvement fill:#fff3e0,stroke:#e8a838
+    style WebUI fill:#e3f2fd,stroke:#4a90d9
+```
+
+---
+
+## 4. The Config System
+
+`config/default_mapping.json` is the single source of truth. It drives parsing, enrichment, and mapping — no code changes needed to add support for new event types.
+
+See: `config/default_mapping.json`, `config_loader.py`
+
+### MappingSpecification Structure
+
+```mermaid
+erDiagram
+    MappingSpecification ||--o{ EventMetadata : event_metadata
+    MappingSpecification ||--o{ EnrichmentRule : enrichment_rules
+    MappingSpecification ||--o{ SpanMappingRule : rules
+    MappingSpecification ||--o{ SessionInfoExtraction : session_info_extraction
+    MappingSpecification ||--o{ DerivedSessionField : derived_session_fields
+    MappingSpecification ||--o{ ChangelogEntry : changelog
+
+    MappingSpecification {
+        string version "1.1"
+        string name "MCS-to-OTEL GenAI Mapping"
+        string service_name "copilot-studio"
+        list error_event_names "error, error_code"
+    }
+
+    EventMetadata {
+        string value_type "e.g. DynamicPlanReceived"
+        bool tracked "include in extraction?"
+        string label "human-readable name"
+        string description "what this event means"
+        string entity_type "trace_event"
+        string default_output_type "span or event"
+    }
+
+    EnrichmentRule ||--o{ EnrichmentOp : derived_fields
+    EnrichmentRule {
+        string value_type "which event type to enrich"
+    }
+    EnrichmentOp {
+        string target "output property name"
+        string op "extract_path | len | join | ..."
+        string source "dot-path to input data"
+        string separator "for join ops"
+        object condition "when to apply"
+    }
+
+    SpanMappingRule ||--o{ AttributeMapping : attribute_mappings
+    SpanMappingRule {
+        string rule_id "unique identifier"
+        string mcs_entity_type "trace_event | turn"
+        string mcs_value_type "e.g. DynamicPlanReceived"
+        string otel_operation_name "e.g. chain"
+        string otel_span_kind "CLIENT | INTERNAL"
+        string span_name_template "e.g. chain plan"
+        bool is_root "true for session_root only"
+        string parent_rule_id "which rule is parent"
+        string output_type "span or event"
+    }
+
+    AttributeMapping {
+        string mcs_property "source property path"
+        string otel_attribute "target OTEL attribute"
+        string transform "direct | template | constant | lookup"
+        string transform_value "for template/constant"
+    }
+
+    SessionInfoExtraction ||--o{ SessionInfoFieldMapping : field_mappings
+    SessionInfoExtraction {
+        string source_value_type "SessionInfo | ConversationInfo"
+    }
+    SessionInfoFieldMapping {
+        string source_key "key in activity value"
+        string target_key "key in session_info dict"
+        string default "fallback value"
+    }
+
+    DerivedSessionField {
+        string target_key "e.g. environment"
+        object condition "field + equals check"
+        string true_value "e.g. design"
+        string false_value "e.g. production"
+    }
+```
+
+The 6 sections of the config, in processing order:
+
+| Section | Count | Purpose |
+|---------|-------|---------|
+| `event_metadata` | 28 entries | Declares which valueTypes to track during entity extraction |
+| `session_info_extraction` | 2 entries | Maps SessionInfo/ConversationInfo fields to session properties |
+| `derived_session_fields` | 1 entry | Computes `environment` from `is_design_mode` |
+| `enrichment_rules` | 16 entries | Flattens nested data into mappable properties per value type |
+| `rules` | 28 entries | Maps entities to OTEL spans/events with attribute transforms |
+| `changelog` | 1 entry | Version history |
+
+### Config Loading Flow
+
+```mermaid
+flowchart LR
+    JSON["config/default_mapping.json"]
+    Load["config_loader.py<br>load_default_mapping()"]
+    Validate["Pydantic validation<br>MappingSpecification"]
+    Parsers["parsers.py<br>event_metadata<br>enrichment_rules<br>session_info_extraction"]
+    Converter["converter.py<br>rules<br>error_event_names"]
+
+    JSON --> Load --> Validate
+    Validate --> Parsers
+    Validate --> Converter
+
+    style JSON fill:#f0e6ff,stroke:#9b59b6
+    style Validate fill:#e8f4e8,stroke:#5ba85b
+```
+
+---
+
+## 5. Worked Example: The Transcript
+
+The examples throughout the rest of this document use the `rex_teams_transcript.json` test fixture — a simplified 1-turn conversation with "Rex Bluebot" on Microsoft Teams.
+
+See: `tests/fixtures/rex_teams_transcript.json`
+
+The conversation flow:
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant B as Rex Bluebot
+    participant O as Orchestrator
+    participant K as Knowledge Search
+
+    Note over B: ConversationInfo (locale=en-US)
+    B->>U: Hello! I'm Rex Bluebot. How can I help you today?
+    U->>B: What is the refund policy?
+    O->>O: DialogRedirect → topic.RefundPolicy
+    O->>O: DynamicPlanReceived (1 step: search knowledge)
+    O->>K: DynamicPlanStepTriggered (KnowledgeSearch)
+    K-->>O: (search completes)
+    O->>O: DynamicPlanFinished (not cancelled)
+    B->>U: Our refund policy allows returns within 30 days of purchase.
+    Note over B: SessionInfo (outcome=Resolved, type=Engaged)
+```
+
+The raw transcript contains 9 activities:
+1. `ConversationInfo` trace — locale, not design mode
+2. Bot greeting message — "Hello! I'm Rex Bluebot..."
+3. User message — "What is the refund policy?"
+4. `DialogRedirect` trace — routing to topic.RefundPolicy
+5. `DynamicPlanReceived` event — plan with 1 step
+6. `DynamicPlanStepTriggered` event — knowledge search step
+7. `DynamicPlanFinished` event — plan completed
+8. Bot response message — "Our refund policy allows returns within 30 days..."
+9. `SessionInfo` trace — outcome Resolved, 1 turn
+
+---
+
+## 6. Stage 1: Parsing + Entity Extraction
+
+See: `parsers.py`
+
+### Input Formats
+
+The parser handles 3 JSON structures:
+1. **Bare array** — `[{activity}, {activity}, ...]`
+2. **Wrapped object** — `{"activities": [...]}`
+3. **Dataverse export** — `{"content": "{\"activities\": [...]}"}` (JSON-in-JSON from Dataverse CSV)
+
+### Entity Extraction Flow
+
+```mermaid
+flowchart TB
+    Raw["Raw JSON"]
+    Resolve["_resolve_activities()<br>detect format"]
+    Parse["_parse_activity()<br>per activity"]
+    Typed["parse_activity_value()<br>SCHEMA_REGISTRY lookup"]
+
+    subgraph Entities["3 Entity Types"]
+        Root["session_root<br>(1 per transcript)"]
+        Turns["turn entities<br>(1 per user message + greeting)"]
+        Events["trace_event entities<br>(1 per tracked valueType)"]
+    end
+
+    Session["_extract_session_info()<br>config-driven field extraction"]
+    TurnGroup["_extract_turns()<br>group by user messages"]
+    Filter["event_metadata filter<br>only tracked=true types"]
+    Enrich["apply_enrichment_rules()<br>flatten nested data"]
+
+    Raw --> Resolve --> Parse --> Typed
+    Typed --> Session --> Root
+    Typed --> TurnGroup --> Turns
+    Typed --> Filter --> Enrich --> Events
+
+    style Root fill:#4a90d9,color:white
+    style Turns fill:#5ba85b,color:white
+    style Events fill:#e8a838,color:white
+```
+
+### Turn Grouping
+
+```mermaid
+flowchart TB
+    Sorted["Sort activities by timestamp"]
+    FindUser["Find all user message indices"]
+    T0{"Bot messages before<br>first user message?"}
+    Turn0["Turn 0 (greeting)<br>bot_msg only"]
+    TurnN["Turn N<br>user_msg + last bot_msg in range"]
+    Scan["For each user message:<br>collect activities until next user message"]
+    Topic["Extract topic from<br>DynamicPlanStepTriggered"]
+
+    Sorted --> FindUser --> T0
+    T0 -->|yes| Turn0
+    T0 -->|no| Scan
+    Turn0 --> Scan
+    Scan --> TurnN
+    Scan --> Topic
+
+    style Turn0 fill:#5ba85b,color:white
+    style TurnN fill:#5ba85b,color:white
+```
+
+Turn 0 captures the bot's greeting before any user interaction. Subsequent turns are bounded by consecutive user messages — all bot messages and trace events between two user messages belong to the same turn.
+
+### Worked Example: Entities Produced
+
+From the Rex Bluebot transcript (9 activities → 7 entities):
+
+| # | entity_id | entity_type | value_type | Key Properties |
+|---|-----------|-------------|------------|----------------|
+| 1 | `session_root` | `trace_event` | `SessionInfo` | outcome=Resolved, bot_name=Rex Bluebot, channel=msteams |
+| 2 | `turn_0` | `turn` | — | bot_msg="Hello! I'm Rex Bluebot...", is_greeting=true |
+| 3 | `turn_1` | `turn` | — | user_msg="What is the refund policy?", bot_msg="Our refund policy..." |
+| 4 | `trace_DialogRedirect_0` | `trace_event` | `DialogRedirect` | targetDialogId=topic.RefundPolicy |
+| 5 | `trace_DynamicPlanReceived_0` | `trace_event` | `DynamicPlanReceived` | step_count=1, is_final_plan=False |
+| 6 | `trace_DynamicPlanStepTriggered_0` | `trace_event` | `DynamicPlanStepTriggered` | taskDialogId=P:UniversalSearchTool, type=KnowledgeSearch |
+| 7 | `trace_DynamicPlanFinished_0` | `trace_event` | `DynamicPlanFinished` | was_cancelled=False |
+
+Note: `ConversationInfo` data is absorbed into `session_root` via `session_info_extraction` rather than creating a separate entity. Entity #5 has enriched properties (`step_count`, `is_final_plan`) that were flattened from the nested `value` field during extraction.
+
+### 6.1 Value Models (SCHEMA_REGISTRY)
+
+Each known `valueType` has a Pydantic model in `models.py` that validates and types the raw `value` dict. This catches malformed data early and provides IDE autocomplete.
+
+See: `models.py` lines 38-199
+
+The pattern:
+
+```
+Activity with valueType="SessionInfo" →
+  SCHEMA_REGISTRY["SessionInfo"] →
+    SessionInfoValue model →
+      validated, typed dict
+```
+
+| valueType | Model Class | Key Fields |
+|-----------|-------------|------------|
+| `SessionInfo` | `SessionInfoValue` | outcome, type, startTimeUtc, endTimeUtc, turnCount, outcomeReason, impliedSuccess |
+| `IntentRecognition` | `IntentRecognitionValue` | intentName, intentId, score, userMessage |
+| `ConversationInfo` | `ConversationInfoValue` | isDesignMode, locale |
+| `DynamicPlanReceived` | `DynamicPlanReceivedValue` | steps, isFinalPlan, planIdentifier, toolDefinitions |
+| `DynamicPlanStepTriggered` | `DynamicPlanStepTriggeredValue` | planIdentifier, stepId, taskDialogId, thought, type |
+| `DynamicPlanFinished` | `DynamicPlanFinishedValue` | planId, wasCancelled |
+| `DialogRedirect` | `DialogRedirectValue` | targetDialogId, targetDialogName, sourceDialogId |
+| `VariableAssignment` | `VariableAssignmentValue` | name, value, type |
+| `ErrorTraceData` | `ErrorTraceDataValue` | isUserError, errorCode, errorMessage |
+| `UnknownIntent` | `UnknownIntentValue` | userQuery |
+| `KnowledgeTraceData` | `KnowledgeTraceDataValue` | completionState, isKnowledgeSearched, citedKnowledgeSources |
+| `GPTAnswer` | `GPTAnswerValue` | gptAnswerState |
+| `CSATSurveyResponse` | `CSATSurveyResponseValue` | score, comment |
+| `PRRSurveyResponse` | `PRRSurveyResponseValue` | response |
+| `EscalationRequested` | `EscalationRequestedValue` | escalationRequestType |
+| `HandOff` | `HandOffValue` | (extra="allow") |
+| `ImpliedSuccess` | `ImpliedSuccessValue` | dialogId |
+| `nodeTraceData` | `NodeTraceDataValue` | nodeID, nodeType, startTime, endTime, topicDisplayName |
+
+All models use `ConfigDict(extra="allow")` so unknown fields pass through without error.
+
+---
+
+## 7. Stage 2: Enrichment System
+
+See: `parsers.py` lines 474-669
+
+### Why Enrichment Exists
+
+MCS trace events often bury useful data inside nested structures. A `DynamicPlanStepFinished` event might have search results at `observation.search_result.search_results[0].Name` — three levels deep. Mapping rules can only read flat, top-level properties. Enrichment bridges this gap by extracting, counting, joining, and flattening nested data into simple string properties.
+
+### Enrichment Pipeline
+
+```mermaid
+flowchart LR
+    Entity["Entity with<br>nested properties"]
+    Match{"Match enrichment rule<br>by value_type"}
+    Loop["For each EnrichmentOp<br>in derived_fields"]
+    Check{"Condition<br>met?"}
+    Apply["Apply op:<br>extract / len / join / ..."]
+    Skip["Skip op"]
+    Done["Enriched entity<br>with flat properties"]
+
+    Entity --> Match
+    Match -->|found| Loop
+    Match -->|no match| Done
+    Loop --> Check
+    Check -->|yes| Apply --> Loop
+    Check -->|no| Skip --> Loop
+    Loop -->|all ops done| Done
+
+    style Entity fill:#e8a838,color:white
+    style Done fill:#5ba85b,color:white
+```
+
+### Condition Types
+
+```mermaid
+stateDiagram-v2
+    [*] --> CheckCondition
+    CheckCondition --> if_isinstance: type check
+    CheckCondition --> if_not_empty: value present?
+    CheckCondition --> if_not_none: not None?
+    CheckCondition --> prefix: string starts with?
+    CheckCondition --> unconditional: no condition
+
+    if_isinstance --> Pass: isinstance(val, dict/list/str)
+    if_isinstance --> Fail: wrong type
+
+    if_not_empty --> Pass: truthy value
+    if_not_empty --> Fail: empty/falsy
+
+    if_not_none --> Pass: value is not None
+    if_not_none --> Fail: value is None
+
+    prefix --> Pass: val.startswith(prefix)
+    prefix --> Fail: no match
+
+    unconditional --> Pass: always
+
+    Pass --> ApplyOp
+    Fail --> SkipOp
+```
+
+### Enrichment Operations
+
+| Op | What it does | Input example | Output example |
+|----|-------------|---------------|----------------|
+| `extract_path` | Dot-path traversal into nested dicts | `observation.search_result.search_results` → `[{Name: "Policy.docx"}]` | `"[{'Name': 'Policy.docx'}]"` |
+| `len` | Count list items | `steps` → `["P:SearchTool", "P:Topic1"]` | `"2"` |
+| `join` | Join list with separator, supports `[*].field` | `actions[*].actionType` → `["Send", "Condition"]` | `"Send, Condition"` |
+| `join_unique_sorted` | Dedupe + sort + join | `results[*].Type` → `["SharePoint", "Web", "SharePoint"]` | `"SharePoint, Web"` |
+| `json_dump` | Serialize sub-object to JSON string | `observation` → `{content: [...]}` | `'{"content": [...]}'` |
+| `str_coerce` | `str(value)` — coerce to string | `isFinalPlan` → `False` | `"False"` |
+| `rename` | Copy value under a new key | `dialogSchemaName` → `"schema_v1"` | props[`mcp_dialog_schema`] = `"schema_v1"` |
+| `conditional` | Apply only if prefix matches, optional extract | `taskDialogId` = `"MCP:myTool"` with `extract=split_last_colon` | `"myTool"` |
+
+### Worked Example: DynamicPlanReceived Enrichment
+
+Before enrichment:
+```
 {
-  "observation": {
-    "search_result": {
-      "search_results": [
-        {"Name": "Refund Policy.docx", "Type": "SharePoint"}
-      ]
-    }
-  }
+  "steps": ["P:UniversalSearchTool"],
+  "isFinalPlan": false,
+  "planIdentifier": "plan-id-001",
+  "timestamp": 1771240863
 }
 ```
 
-Enrichment flattens this into simple, mappable properties:
+Enrichment rule applies 3 ops:
+1. `len` on `steps` → `step_count = "1"`
+2. `str_coerce` on `isFinalPlan` → `is_final_plan = "False"`
+3. `len` on `toolDefinitions` → (null, skipped)
 
+After enrichment:
 ```
-retrieval_document_count: "1"
-retrieval_document_names: "Refund Policy.docx"
-retrieval_source_types: "SharePoint"
-```
-
-This happens automatically during entity extraction. Each event type has its own enrichment logic that knows which nested fields matter.
-
-### Mapping rules
-
-The translation instructions. Each rule says: "When you see an entity of type X, create an OTEL span with these properties." A rule includes:
-
-- **Which entity to match** (by entity type and value type)
-- **What OTEL span to create** (operation name, span kind)
-- **How to name it** (a template like `"chat turn:{turn_index}"`)
-- **Where it goes in the tree** (which parent rule it nests under)
-- **Which properties to copy** (attribute mappings from MCS property to OTEL attribute)
-
-The project ships with 28 default rules covering all 26 tracked event types.
-
-### OTEL spans
-
-The output format. A **span** represents a unit of work with:
-
-- A name (like `"knowledge.retrieval"`)
-- A start and end time
-- Key-value attributes (like `mcs.knowledge.source_count: "3"`)
-- A parent span (creating a tree structure)
-- An operation name (like `knowledge.retrieval`, `chain`, `chat`)
-
-Spans are the building blocks of distributed tracing. Monitoring tools visualize them as a waterfall or tree, making it easy to see what happened and how long each step took.
-
-### Events vs spans
-
-Some things are better represented as **events** (lightweight annotations attached to a parent span) rather than full spans. Errors and variable assignments, for example, don't have meaningful duration — they're point-in-time occurrences. The mapping rules use `output_type: "event"` for these, which attaches them as events on the parent span instead of creating a separate child span.
-
-## The pipeline step by step
-
-Let's walk through what happens when you upload the sample transcript (a user asking "What is the refund policy?").
-
-### Step 1: Parse
-
-The raw JSON array of 9 activities gets parsed into typed `MCSActivity` objects. The parser:
-
-- Detects the JSON format (bare array, `{"activities": [...]}`, or Dataverse CSV row)
-- Normalizes timestamps to epoch seconds/millis
-- Extracts the conversation ID (`rex-conv-001`)
-- Identifies the bot (`Rex Bluebot`) from the first bot message
-- Pulls session metadata (outcome: Resolved, type: Engaged, 1 turn)
-
-### Step 2: Extract entities
-
-The activities become 7 entities:
-
-```
-1. session_root     — SessionInfo (outcome=Resolved, bot=Rex Bluebot)
-2. turn_0           — Turn 0 (greeting): "Hello! I'm Rex Bluebot..."
-3. turn_1           — Turn 1: "What is the refund policy?"
-4. trace_DialogRedirect_0      — Dialog redirect to topic.RefundPolicy
-5. trace_DynamicPlanReceived_0 — Plan with 1 step: search knowledge
-6. trace_DynamicPlanStepTriggered_0 — Step triggered: KnowledgeSearch
-7. trace_DynamicPlanFinished_0 — Plan completed, not cancelled
+{
+  "steps": ["P:UniversalSearchTool"],
+  "isFinalPlan": false,
+  "planIdentifier": "plan-id-001",
+  "timestamp": 1771240863,
+  "step_count": "1",
+  "is_final_plan": "False"
+}
 ```
 
-During extraction, the `DynamicPlanReceived` entity gets enriched with `step_count: "1"` and `is_final_plan: "False"` (flattened from the nested value).
+The enriched `step_count` and `is_final_plan` properties are now flat strings that mapping rules can directly reference.
 
-### Step 3: Map to OTEL spans
+---
 
-The 28 mapping rules are applied. Each entity is matched against rules:
+## 8. Stage 3: Rule Matching + Span Building
 
-- `session_root` matches the root rule → creates the top-level `invoke_agent Rex Bluebot` span
-- `turn_0` and `turn_1` match the turn rule → create `chat turn:0` and `chat turn:1` spans under the root
-- `DynamicPlanReceived` matches the plan rule → creates `chain plan` span under `turn_1`
-- `DynamicPlanStepTriggered` matches the step rule → creates `chain step:KnowledgeSearch` span under `dynamic_plan`
-- `DynamicPlanFinished` matches the finished rule → creates `chain plan.finished` span under `dynamic_plan`
-- `DialogRedirect` matches the redirect rule → creates `dialog_redirect` event on `turn_1`
+See: `converter.py`
 
-### Step 4: Build the tree
+### The 5-Phase Algorithm
 
-Parent-child relationships are established based on the `parent_rule_id` in each mapping rule. The result is a span tree (shown below).
+```mermaid
+flowchart TB
+    P1["Phase 1: Match Rules<br>For each rule, find matching entities.<br>Create spans or queue events."]
+    P2["Phase 2: Build Tree<br>Link child spans to parents<br>via parent_rule_id."]
+    P3["Phase 3: Find Root<br>Locate the is_root=true span.<br>Attach orphans as children."]
+    P4["Phase 4: Attach Events<br>Place queued events on their<br>parent spans."]
+    P5["Phase 5: Error Status<br>Mark parent spans as ERROR<br>when they contain error events."]
 
-## The span tree
+    P1 --> P2 --> P3 --> P4 --> P5
 
-Here's what the output looks like for our example transcript:
-
-```
-invoke_agent Rex Bluebot (CLIENT)         ← root span
-├── chat turn:0 (CLIENT)                  ← bot greeting
-├── chat turn:1 (CLIENT)                  ← user question + bot answer
-│   ├── chain plan (INTERNAL)             ← AI orchestrator's plan
-│   │   ├── chain step:KnowledgeSearch    ← step: search knowledge
-│   │   └── chain plan.finished           ← plan completed
-│   └── [event] dialog_redirect           ← topic routing (event, not span)
+    style P1 fill:#4a90d9,color:white
+    style P2 fill:#4a90d9,color:white
+    style P3 fill:#4a90d9,color:white
+    style P4 fill:#e8a838,color:white
+    style P5 fill:#e74c3c,color:white
 ```
 
-The full default hierarchy for complex conversations looks like this:
+**Phase 1** iterates all 28 rules. For each rule, it finds entities matching `mcs_entity_type` + `mcs_value_type`. Matched entities produce either a span (added to the tree) or a pending event (queued for Phase 4). Span names are built from templates like `"chat turn:{turn_index}"` using entity properties.
 
-```
-invoke_agent {bot_name}                   ← session root
-└── chat turn:{N}                         ← one per user message
-    ├── chain plan                        ← AI orchestrator plan
-    │   ├── chain step:{action}           ← each plan step
-    │   ├── chain step.bind               ← step parameter binding
-    │   ├── tool.execute step.finished    ← step completion + results
-    │   └── chain plan.finished           ← plan done
-    ├── knowledge.retrieval               ← knowledge base search
-    ├── topic_classification              ← intent/topic routing
-    ├── chain dialog.tracing              ← dialog flow info
-    ├── create_agent mcp.init             ← MCP server connection
-    │   └── create_agent mcp.init.confirm ← MCP handshake confirmed
-    └── [events]                          ← errors, variables, etc.
-```
+**Phase 2** walks rules with a `parent_rule_id`. For each child span, it finds the best parent span (closest by timestamp) from the parent rule's span list and sets `parent_span_id`.
 
-## The self-learning loop
+**Phase 3** finds the root span (the one rule with `is_root: true`). Any spans without a parent get adopted as children of the root. Root timing is adjusted to cover all children.
 
-The project includes an improvement engine (`improve.py`) that can analyze hundreds of real transcripts to find gaps in the mapping rules and automatically fix them.
+**Phase 4** attaches queued events to their parent spans (or root if no parent specified).
 
-### How it works
+**Phase 5** checks if any error events (names in `error_event_names`) were attached. If so, the parent span gets `status: ERROR`.
 
-```
-  ┌──────────┐     ┌──────────┐     ┌──────────┐
-  │ Analyze   │────>│ Classify │────>│ Auto-fix │──┐
-  │ all files │     │ findings │     │ obvious  │  │
-  └──────────┘     └──────────┘     │ gaps     │  │
-       ^                            └──────────┘  │
-       │                                          │
-       └──────────────────────────────────────────┘
-                    repeat until converged
-```
+### The 28-Rule Tree
 
-1. **Analyze** — Run every transcript through the full pipeline. Measure coverage (how many entities produce spans) and fill rate (how many attributes have values).
-2. **Classify** — Sort gaps into two buckets:
-   - **Auto-fixable**: An unknown event type appears in 3+ files → safe to add automatically
-   - **Needs review**: Rare types or ones with complex nested data → flagged for a human
-3. **Auto-fix** — Add new types to the tracker, create mapping rules, extend attribute mappings
-4. **Re-analyze** — Run again with the improved rules and measure improvement
-5. **Repeat** — Stop when there's nothing left to fix or improvement drops below 0.1%
+This is the complete rule hierarchy from `config/default_mapping.json`. Blue nodes are spans, orange nodes are events.
 
-### What it produces
+```mermaid
+flowchart TB
+    classDef spanNode fill:#4a90d9,color:white,stroke:#2c6faa
+    classDef eventNode fill:#e8a838,color:white,stroke:#c4882a
+    classDef rootNode fill:#2c6faa,color:white,stroke:#1a4a7a,stroke-width:3px
 
-- Per-iteration metrics (coverage %, fill rate, what was fixed)
-- A code export file with Python snippets to paste into the source files
-- The final improved mapping specification as JSON
+    SR["session_root<br>invoke_agent {bot_name}<br>CLIENT, root"]:::rootNode
 
-## The web dashboard
+    UT["user_turn<br>chat turn:{N}<br>CLIENT"]:::spanNode
+    CSAT["csat_response<br>(event)"]:::eventNode
+    PRR["prr_response<br>(event)"]:::eventNode
+    IS["implied_success<br>(event)"]:::eventNode
+    ESC["escalation<br>(event)"]:::eventNode
+    HO["handoff<br>(event)"]:::eventNode
 
-The project includes a Reflex web app at `http://localhost:3000` with several panels:
+    SR --> UT
+    SR --> CSAT
+    SR --> PRR
+    SR --> IS
+    SR --> ESC
+    SR --> HO
 
-| Page/Panel | What it does |
-|-----------|-------------|
-| **Upload** | Drag-and-drop a transcript JSON or Dataverse CSV file |
-| **Mapping Editor** | Visual drag-and-drop editor (React Flow) showing MCS entities on the left, OTEL attributes on the right, with lines connecting them. Add, edit, or remove mapping rules. |
-| **Span Tree** | Interactive tree visualization of the generated OTEL spans. Shows parent-child nesting, timing, and attributes for each span. |
-| **Export** | Download the OTLP JSON output, ready to import into Jaeger or send to a collector |
-| **Improve** (`/improve`) | Dashboard for the self-learning loop: set parameters, run iterations, see coverage charts, review findings, accept/reject suggestions, and apply changes to source code |
+    KS["knowledge_search<br>knowledge.retrieval<br>CLIENT"]:::spanNode
+    DP["dynamic_plan<br>chain plan<br>INTERNAL"]:::spanNode
+    TC["topic_classification<br>dialog_redirect<br>INTERNAL"]:::spanNode
+    MCI["mcp_server_init<br>create_agent mcp_init<br>INTERNAL"]:::spanNode
+    MCT["mcp_tools_list<br>create_agent mcp_tools<br>INTERNAL"]:::spanNode
+    DT["dialog_tracing<br>chain dialog_trace<br>INTERNAL"]:::spanNode
+    PI["protocol_info<br>chain protocol_info<br>INTERNAL"]:::spanNode
+    SI["skill_info<br>create_agent skill_info<br>INTERNAL"]:::spanNode
+    AB["ai_builder_trace<br>execute_tool ai_builder<br>INTERNAL"]:::spanNode
+    BLK["dynamic_plan_step_blocked<br>blocked_step<br>INTERNAL"]:::spanNode
+    KTD["knowledge_trace_data<br>knowledge.trace.data<br>INTERNAL"]:::spanNode
+    ET["error_trace<br>(event)"]:::eventNode
+    EC["error_code<br>(event)"]:::eventNode
+    VA["variable_assignment<br>(event)"]:::eventNode
+    UI["unknown_intent<br>(event)"]:::eventNode
 
-## The CLI tools
+    UT --> KS
+    UT --> DP
+    UT --> TC
+    UT --> MCI
+    UT --> MCT
+    UT --> DT
+    UT --> PI
+    UT --> SI
+    UT --> AB
+    UT --> BLK
+    UT --> KTD
+    UT --> ET
+    UT --> EC
+    UT --> VA
+    UT --> UI
 
-### analyze_transcripts.py
+    PSB["plan_step_bind<br>chain bind:{tool}<br>INTERNAL"]:::spanNode
+    PSF["plan_step_finished<br>execute_tool {tool}<br>CLIENT"]:::spanNode
+    PF["plan_finished<br>chain plan_finished<br>INTERNAL"]:::spanNode
+    PST["plan_step_triggered<br>chain step:{tool}<br>INTERNAL"]:::spanNode
+    PRD["plan_received_debug<br>chain plan_debug<br>INTERNAL"]:::spanNode
 
-Scans transcript files and produces a markdown report showing which event types are covered, which are missing mapping rules, and what properties aren't being mapped.
+    DP --> PSB
+    DP --> PSF
+    DP --> PF
+    DP --> PST
+    DP --> PRD
 
-```bash
-# Scan the default directories
-uv run python analyze_transcripts.py
+    MCIC["mcp_server_init_confirmation<br>create_agent mcp_init_confirm<br>INTERNAL"]:::spanNode
 
-# Scan a specific directory or CSV file
-uv run python analyze_transcripts.py samples/
-
-# Custom output with verbose logging
-uv run python analyze_transcripts.py -o my_report.md -v
-```
-
-Output goes to `docs/transcript_analysis.md`.
-
-### improve.py
-
-Runs the self-learning improvement loop against a corpus of transcripts.
-
-```bash
-# Run against a directory of JSON files
-uv run python improve.py /path/to/transcripts/
-
-# Run against a Dataverse CSV export
-uv run python improve.py samples/conversationtranscripts.csv
-
-# Limit to 3 iterations, require 5+ files for auto-fix
-uv run python improve.py samples/ -n 3 --min-files 5
+    MCI --> MCIC
 ```
 
-Output goes to `improve_runs/`.
+Summary: **19 span rules** + **9 event rules** = **28 total rules**.
 
-## File map
+| Parent | Child Spans | Child Events |
+|--------|-------------|--------------|
+| `session_root` | `user_turn` | `csat_response`, `prr_response`, `implied_success`, `escalation`, `handoff` |
+| `user_turn` | `knowledge_search`, `dynamic_plan`, `topic_classification`, `mcp_server_init`, `mcp_tools_list`, `dialog_tracing`, `protocol_info`, `skill_info`, `ai_builder_trace`, `dynamic_plan_step_blocked`, `knowledge_trace_data` | `error_trace`, `error_code`, `variable_assignment`, `unknown_intent` |
+| `dynamic_plan` | `plan_step_bind`, `plan_step_finished`, `plan_finished`, `plan_step_triggered`, `plan_received_debug` | — |
+| `mcp_server_init` | `mcp_server_init_confirmation` | — |
 
-### Core logic
+### Single Rule Match Logic
 
-| File | Purpose |
-|------|---------|
-| `parsers.py` | Reads raw transcript JSON/CSV, extracts activities, produces normalized entities with enriched properties |
-| `converter.py` | Applies mapping rules to entities, builds the OTEL span tree, exports OTLP JSON |
-| `models.py` | All data models: MCSActivity, MCSEntity, OTELSpan, SpanMappingRule, AttributeMapping, etc. |
-| `otel_registry.py` | 104 OTEL attribute definitions across 10 categories (the "vocabulary" of output attributes) |
+```mermaid
+flowchart TB
+    Entity["Entity"]
+    CheckType{"entity_type ==<br>rule.mcs_entity_type?"}
+    CheckVT{"value_type ==<br>rule.mcs_value_type?<br>(or label matches)"}
+    NoVT{"rule has<br>mcs_value_type?"}
+    BuildName["Build span name<br>from template"]
+    BuildAttrs["Apply attribute<br>mappings"]
+    IsEvent{"output_type<br>== event?"}
+    QueueEvent["Queue as<br>pending event"]
+    CreateSpan["Create OTELSpan"]
+    NoMatch["Skip"]
 
-### CLI tools
+    Entity --> CheckType
+    CheckType -->|no| NoMatch
+    CheckType -->|yes| NoVT
+    NoVT -->|no, match all| BuildName
+    NoVT -->|yes| CheckVT
+    CheckVT -->|no| NoMatch
+    CheckVT -->|yes| BuildName
+    BuildName --> BuildAttrs --> IsEvent
+    IsEvent -->|yes| QueueEvent
+    IsEvent -->|no| CreateSpan
 
-| File | Purpose |
-|------|---------|
-| `analyze_transcripts.py` | Coverage analysis — finds gaps between transcripts and mapping rules |
-| `improve.py` | Self-learning loop — iteratively improves mapping rules using real transcripts |
+    style CreateSpan fill:#4a90d9,color:white
+    style QueueEvent fill:#e8a838,color:white
+    style NoMatch fill:#ccc,color:#333
+```
+
+### 8.1 Transform Types
+
+See: `converter.py` lines 54-67
+
+| Transform | What it does | MCS value | transform_value | Output |
+|-----------|-------------|-----------|-----------------|--------|
+| `direct` | Pass through as-is | `"Resolved"` | — | `"Resolved"` |
+| `template` | String substitution | `"What is refund?"` | `[{{"role":"user","content":"{value}"}}]` | `[{"role":"user","content":"What is refund?"}]` |
+| `constant` | Ignore input, use fixed value | (any) | `"copilot_studio"` | `"copilot_studio"` |
+| `lookup` | Same as direct (reserved for future use) | `"en-US"` | — | `"en-US"` |
+
+---
+
+## 9. Stage 4: OTLP Export
+
+See: `converter.py` lines 330-439
+
+After the span tree is built, `to_otlp_json()` serializes it into the OTLP JSON format:
+
+1. **Flatten** the span tree depth-first into a flat list
+2. **Wrap** in `resourceSpans → scopeSpans → spans[]` structure
+3. **Convert** each span's attributes to typed OTLP values (`stringValue`, `intValue`, `boolValue`, `doubleValue`)
+4. **Serialize** events with their attributes and nanosecond timestamps
+
+### OTLP Output Structure (Worked Example)
+
+```mermaid
+flowchart TB
+    subgraph OTLP["resourceSpans[0]"]
+        subgraph Res["resource"]
+            SN["service.name = Rex Bluebot"]
+            SDKN["telemetry.sdk.name = mcs-otel-mapper"]
+        end
+        subgraph Scope["scopeSpans[0] / scope: mcs-otel-mapper v1.1"]
+            S1["invoke_agent Rex Bluebot<br>kind=CLIENT, trace_id=a1b2.."]
+            S2["chat turn:0<br>kind=CLIENT, parent=S1"]
+            S3["chat turn:1<br>kind=CLIENT, parent=S1"]
+            S4["dialog_redirect<br>kind=INTERNAL, parent=S3"]
+            S5["chain plan<br>kind=INTERNAL, parent=S3"]
+            S6["chain step:P:UniversalSearchTool<br>kind=INTERNAL, parent=S5"]
+            S7["chain plan_finished<br>kind=INTERNAL, parent=S5"]
+        end
+    end
+
+    S1 --> S2
+    S1 --> S3
+    S3 --> S4
+    S3 --> S5
+    S5 --> S6
+    S5 --> S7
+
+    style OTLP fill:#f5f5f5,stroke:#333
+    style Res fill:#e8f4e8,stroke:#5ba85b
+    style Scope fill:#fff3e0,stroke:#e8a838
+```
+
+The `service.name` is set to the bot name when available (from `botContent.yml` or the transcript's first bot message), falling back to `"copilot-studio"`.
+
+---
+
+## 10. The Improvement Engine
+
+See: `improve.py`, `analyze_transcripts.py`
+
+The improvement engine is a self-learning loop that analyzes real transcripts to find gaps in the mapping config and iteratively fixes them.
+
+### Improvement Loop
+
+```mermaid
+flowchart TB
+    Start["Load current<br>default_mapping.json"]
+    Analyze["Analyze corpus<br>(all transcripts)"]
+    Measure["Measure coverage %<br>and fill rate %"]
+    Classify["Classify findings:<br>new_type | new_attribute | new_enrichment"]
+    Split{"Auto-fixable?"}
+    Auto["Auto-fix:<br>add EventMetadata +<br>SpanMappingRule"]
+    Review["Needs review:<br>complex nested types"]
+    Check{"Converged?<br>no fixes or < 0.1% gain"}
+    Save["Save proposed_mapping.json"]
+    Approve["User: review diff<br>then approve"]
+
+    Start --> Analyze --> Measure --> Classify --> Split
+    Split -->|">= 3 files| Auto
+    Split -->|"< 3 files or nested"| Review
+    Auto --> Check
+    Review --> Check
+    Check -->|no| Analyze
+    Check -->|yes| Save --> Approve
+
+    style Start fill:#4a90d9,color:white
+    style Auto fill:#5ba85b,color:white
+    style Review fill:#e8a838,color:white
+    style Save fill:#9b59b6,color:white
+```
+
+### Finding Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> Detected: corpus analysis
+
+    Detected --> AutoFixed: auto_fixable=true, >= min_file_count
+    Detected --> NeedsReview: auto_fixable=false or nested
+
+    AutoFixed --> Applied: next iteration uses updated spec
+    NeedsReview --> Applied: human approves
+    NeedsReview --> Rejected: human rejects
+
+    Applied --> [*]: coverage improved
+    Rejected --> [*]: finding discarded
+```
+
+Finding categories:
+
+| Category | Auto-fixable? | What it means |
+|----------|---------------|---------------|
+| `new_type` | Yes (if >= 3 files) | Unknown valueType found — add EventMetadata + SpanMappingRule |
+| `new_attribute` | Yes | Property on a tracked type has no AttributeMapping — add one |
+| `new_enrichment` | No | Type has nested structures — needs manual enrichment rules |
+
+The CLI workflow:
+1. `uv run python improve.py run /path/to/transcripts/`
+2. `uv run python improve.py diff` — see what changed
+3. `uv run python improve.py approve` — apply with version bump
+
+---
+
+## 11. The Web UI
+
+See: `web/web.py`, `web/components/`, `web/state/`
+
+The Reflex app provides a visual interface for the full pipeline.
+
+### UI Structure
+
+```mermaid
+flowchart TB
+    subgraph App["Reflex App (port 3000)"]
+        subgraph Index["/ (Index Page)"]
+            OV["Overview Tab<br>Upload → Connection → Mapping Editor → Span Tree → Export"]
+            SE["Session Tab<br>Session Dashboard + Conversation View"]
+            EN["Entities Tab<br>Entity Browser"]
+            RG["Rule Graph Tab<br>Rule Hierarchy (React Flow)"]
+            RE["Registry Tab<br>Event Registry"]
+        end
+        IMP["/improve<br>Improvement Dashboard"]
+    end
+
+    style App fill:#f5f5f5,stroke:#333
+    style Index fill:#e3f2fd,stroke:#4a90d9
+    style IMP fill:#fff3e0,stroke:#e8a838
+```
+
+### State Mixins
+
+The app state is composed from 4 mixins that handle different concerns:
+
+| Mixin | File | Manages |
+|-------|------|---------|
+| `UploadMixin` | `web/state/_upload.py` (224 lines) | File upload, transcript parsing, botContent parsing, entity extraction |
+| `MappingMixin` | `web/state/_mapping.py` (794 lines) | Mapping editor state, rule CRUD, React Flow node/edge generation, OTLP export |
+| `PreviewMixin` | `web/state/_preview.py` (339 lines) | Span tree rendering, entity browsing, session dashboard data, conversation view |
+| `ImproveMixin` | `web/state/_improve.py` (330 lines) | Improvement engine UI, run management, finding review, proposed mapping diff |
+
+These compose into a single `State` class:
+
+```python
+class State(UploadMixin, MappingMixin, PreviewMixin, ImproveMixin, rx.State):
+    pass
+```
+
+---
+
+## 12. Source File Reference
+
+### Core Pipeline
+
+| File | Lines | Role |
+|------|-------|------|
+| `models.py` | 354 | All Pydantic models: MCS input types, OTEL output types, mapping specification |
+| `parsers.py` | 727 | Transcript parsing, entity extraction, enrichment ops, turn grouping, botContent parsing |
+| `converter.py` | 439 | 5-phase rule matching, span tree building, OTLP JSON serialization |
+| `config_loader.py` | 91 | Load and validate `config/default_mapping.json` into `MappingSpecification` |
+| `config/default_mapping.json` | 2163 | Single source of truth: 27 event types, 16 enrichment rules, 28 mapping rules |
+| `otel_registry.py` | 32 | OTEL attribute definitions (the output vocabulary) |
+| `log.py` | 10 | Loguru logger setup |
+| `utils.py` | 8 | Utility functions (`to_snake_case`) |
+
+### Improvement Engine
+
+| File | Lines | Role |
+|------|-------|------|
+| `analyze_transcripts.py` | 521 | Corpus analysis, coverage measurement, gap detection, report generation |
+| `improve.py` | 876 | Self-learning loop, finding classification, auto-fix, diff, approve CLI |
 
 ### Web UI
 
-| File | Purpose |
-|------|---------|
-| `main.py` | Reflex app entry point |
-| `rxconfig.py` | Reflex configuration (ports, environment) |
-| `web/web.py` | Frontend layout and routing |
-| `web/components/` | UI components: upload panel, mapping editor, span tree viewer, export panel, improve dashboard |
-| `web/state/` | Reflex state managers: handle uploads, mapping edits, preview generation, improvement runs |
+| File | Lines | Role |
+|------|-------|------|
+| `main.py` | 1 | Reflex app entry point |
+| `rxconfig.py` | 21 | Reflex configuration |
+| `web/web.py` | 95 | Page layout, tab structure, routing |
+| `web/state/__init__.py` | 12 | State composition from 4 mixins |
+| `web/state/_upload.py` | 224 | Upload handling, parsing, entity extraction |
+| `web/state/_mapping.py` | 794 | Mapping editor, React Flow, OTLP export |
+| `web/state/_preview.py` | 339 | Span tree, entity browser, session dashboard |
+| `web/state/_improve.py` | 330 | Improvement engine dashboard |
+| `web/components/` | ~2,600 | 12 UI component files (upload, mapping editor, span tree, etc.) |
 
 ### Tests
 
-| File | Purpose |
-|------|---------|
-| `tests/test_parsers.py` | Parser unit tests |
-| `tests/test_converter.py` | Converter unit tests |
-| `tests/test_models.py` | Model unit tests |
-| `tests/test_enrichment.py` | Entity enrichment tests |
-| `tests/test_improve.py` | Improvement engine tests |
-| `tests/fixtures/` | Sample transcript JSON and CSV files used by tests |
+| File | Role |
+|------|------|
+| `tests/fixtures/rex_teams_transcript.json` | Simple 1-turn Teams transcript (used in worked examples) |
+| `tests/fixtures/pva_studio_transcript.json` | Multi-turn Studio transcript |
+| `tests/fixtures/zava_expense_transcript.json` | Complex expense-reporting transcript |
+| `tests/fixtures/zava_bot_content.yml` | Sample botContent.yml metadata |
+| `tests/fixtures/sample_dataverse.csv` | Dataverse CSV export format |
+
+---
 
 ## Glossary
 
 | Term | Meaning |
 |------|---------|
 | **Activity** | A single event in a Copilot Studio transcript (message, trace, or event) |
-| **Attribute** | A key-value pair on an OTEL span (like `mcs.session.outcome: "Resolved"`) |
+| **Attribute** | A key-value pair on an OTEL span (e.g., `mcs.session.outcome: "Resolved"`) |
 | **Copilot Studio** | Microsoft's platform for building AI chatbots (formerly Power Virtual Agents) |
 | **Dataverse** | Microsoft's data platform where Copilot Studio stores conversation transcripts |
-| **Enrichment** | Flattening nested JSON structures into simple key-value properties |
-| **Entity** | A normalized, cleaned-up version of a transcript activity, ready for mapping |
-| **Mapping rule** | Instructions for converting one type of MCS entity into an OTEL span |
+| **Enrichment** | Flattening nested JSON structures into simple key-value properties for mapping |
+| **Entity** | A normalized version of a transcript activity, ready for rule matching |
+| **Event (OTEL)** | A point-in-time annotation on a span (no duration), used for errors and variable changes |
+| **Mapping rule** | Instructions for converting one type of MCS entity into an OTEL span or event |
 | **MCP** | Model Context Protocol — a standard for connecting AI agents to external tools |
-| **OTEL** | OpenTelemetry — an open standard for collecting observability data (traces, metrics, logs) |
-| **OTLP** | OpenTelemetry Protocol — the wire format for sending OTEL data to collectors |
-| **Span** | A unit of work in a trace, with a name, timing, attributes, and parent-child relationships |
+| **OTEL** | OpenTelemetry — an open standard for collecting observability data |
+| **OTLP** | OpenTelemetry Protocol — the JSON wire format for sending trace data to collectors |
+| **Span** | A unit of work in a trace, with name, timing, attributes, and parent-child relationships |
 | **Trace** | A tree of spans representing an entire conversation session |
 | **Transcript** | The raw conversation log exported from Copilot Studio |
 | **Turn** | One user message + the bot's response (a back-and-forth exchange) |
