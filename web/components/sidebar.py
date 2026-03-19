@@ -1,4 +1,4 @@
-"""Fixed sidebar with 6-step navigation."""
+"""Fixed sidebar with 6-step navigation and evaluate sub-steps."""
 
 import reflex as rx
 
@@ -11,6 +11,16 @@ SIDEBAR_STEPS: list[dict] = [
     {"key": "improve", "label": "Improve", "icon": "sparkles", "number": "4"},
     {"key": "evaluate", "label": "Evaluate", "icon": "flask-conical", "number": "5"},
     {"key": "save", "label": "Save", "icon": "save", "number": "6"},
+]
+
+EVALUATE_SUBS: list[dict] = [
+    {"key": "upload", "label": "Upload & Preview", "icon": "upload"},
+    {"key": "span_tree", "label": "Span Tree", "icon": "git-commit-horizontal"},
+    {"key": "session", "label": "Session", "icon": "layout-dashboard"},
+    {"key": "conversation", "label": "Conversation", "icon": "message-square"},
+    {"key": "entities", "label": "Entities", "icon": "database"},
+    {"key": "rule_graph", "label": "Rule Graph", "icon": "network"},
+    {"key": "registry", "label": "Event Registry", "icon": "scroll-text"},
 ]
 
 
@@ -47,6 +57,36 @@ def _status_dot(step_key: str) -> rx.Component:
             height="8px",
             border_radius="50%",
             background="var(--gray-6)",
+            flex_shrink="0",
+        ),
+    )
+
+
+def _sub_status_dot(sub_key: str) -> rx.Component:
+    """Green dot for sub-step items based on data availability."""
+    has_data = rx.cond(
+        sub_key == "upload",
+        State.has_transcript,
+        rx.cond(
+            sub_key == "entities",
+            State.has_transcript,
+            State.has_preview,
+        ),
+    )
+    return rx.cond(
+        has_data,
+        rx.box(
+            width="6px",
+            height="6px",
+            border_radius="50%",
+            background="var(--green-9)",
+            flex_shrink="0",
+        ),
+        rx.box(
+            width="6px",
+            height="6px",
+            border_radius="50%",
+            background="var(--gray-5)",
             flex_shrink="0",
         ),
     )
@@ -106,7 +146,52 @@ def _step_button(step: dict) -> rx.Component:
     )
 
 
+def _sub_step_button(sub: dict) -> rx.Component:
+    key = sub["key"]
+    is_active = (State.current_step == "evaluate") & (State.evaluate_sub_step == key)
+    return rx.box(
+        rx.hstack(
+            rx.icon(sub["icon"], size=14, color=rx.cond(is_active, "var(--green-11)", "var(--gray-8)")),
+            rx.text(
+                sub["label"],
+                size="1",
+                weight=rx.cond(is_active, "medium", "regular"),
+                color=rx.cond(is_active, "var(--green-11)", "var(--gray-11)"),
+            ),
+            rx.spacer(),
+            _sub_status_dot(key),
+            spacing="2",
+            align="center",
+            width="100%",
+        ),
+        padding_left="44px",
+        padding_right="12px",
+        padding_y="6px",
+        border_radius="var(--radius-2)",
+        background=rx.cond(is_active, "var(--green-a2)", "transparent"),
+        cursor="pointer",
+        _hover={"background": rx.cond(is_active, "var(--green-a2)", "var(--gray-a2)")},
+        on_click=State.set_evaluate_sub_step(key),
+        width="100%",
+    )
+
+
 def sidebar() -> rx.Component:
+    step_items = []
+    for step in SIDEBAR_STEPS:
+        step_items.append(_step_button(step))
+        if step["key"] == "evaluate":
+            step_items.append(
+                rx.cond(
+                    State.current_step == "evaluate",
+                    rx.vstack(
+                        *[_sub_step_button(sub) for sub in EVALUATE_SUBS],
+                        spacing="0",
+                        width="100%",
+                    ),
+                )
+            )
+
     return rx.box(
         rx.vstack(
             rx.hstack(
@@ -120,7 +205,7 @@ def sidebar() -> rx.Component:
             ),
             rx.separator(),
             rx.vstack(
-                *[_step_button(step) for step in SIDEBAR_STEPS],
+                *step_items,
                 spacing="1",
                 width="100%",
                 padding="8px",
