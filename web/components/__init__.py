@@ -2,6 +2,7 @@ from web.components.connection_view import connection_view
 from web.components.conversation_view import conversation_view
 from web.components.entity_browser import entity_browser
 from web.components.evaluate import evaluate_panel
+from web.components.evaluate_upload import evaluate_upload_panel
 from web.components.event_registry import event_registry
 from web.components.export import export_panel
 from web.components.load_mapping import load_mapping_panel
