@@ -1,23 +1,31 @@
 # MCS-OTEL
 
-Converts Microsoft Copilot Studio conversation transcripts into OpenTelemetry-compatible traces and spans for observability. Multi-tab dashboard for uploading transcripts, visually mapping MCS entities to OTEL attributes, previewing span trees, browsing sessions and entities, inspecting rule hierarchies, and exporting OTLP JSON.
+Converts Microsoft Copilot Studio conversation transcripts into OpenTelemetry-compatible traces and spans for observability. Sidebar-driven workflow for loading mappings, visually connecting MCS entities to OTEL attributes, editing rules, improving mappings with AI, evaluating against real transcripts, and exporting OTLP JSON.
 
 ## Features
 
-**Overview tab** — upload MCS transcript JSON or Dataverse CSV, visual ETL mapping (React Flow), live span tree preview with clickable inspector, error correlation, and OTLP JSON export
+**Sidebar workflow** — 6-step mapping-first flow: Load Mapping → Connections → Rules → Improve → Evaluate → Save
 
-**Session tab** — session dashboard with conversation chat view
+**1. Load Mapping** — mapping library (scan `config/mappings/`), file import, paste JSON, or start blank
 
-**Entities tab** — entity browser for exploring extracted MCS entities
+**2. Connections** — visual ETL mapping with React Flow drag-and-drop between MCS entities and OTEL targets
 
-**Rule Graph tab** — rule hierarchy visualization with per-attribute fill rate bars and per-rule match stats
+**3. Rules** — rule editor with attribute mappings, inline validation, per-rule match stats and fill rates
 
-**Registry tab** — event registry with attribute mappings visible on rule cards
+**4. Improve** — self-learning improvement engine with guided apply workflow and diff preview
 
-**Improve page** (`/improve`) — self-learning improvement engine with guided apply workflow and diff preview
+**5. Evaluate** — upload transcript, auto-generate preview, then explore via sub-navigation:
+- Span Tree — clickable span inspector with error correlation
+- Session Dashboard — session context and conversation chat view
+- Conversation — turn-by-turn user/bot message view
+- Entities — entity browser for exploring extracted MCS entities
+- Rule Graph — rule hierarchy visualization with per-attribute fill rate bars
+- Event Registry — event registry with attribute mappings on rule cards
+
+**6. Save** — save to mapping library, download mapping spec or OTLP trace JSON
 
 **Core:**
-- Config-driven mapping — all rules, attributes, and descriptions in `config/default_mapping.json`
+- Config-driven mapping — all rules, attributes, and descriptions in `config/mappings/default.json`
 - 28 default mapping rules covering 26 event types
 - Full OTLP compliance (Client SpanKind for root, UNSET status codes)
 - Deep support for MCP, AI Builder, and Knowledge Retrieval tracing
@@ -41,21 +49,25 @@ MCS_OTEL/
 ├── parsers.py               # Transcript parsing and entity extraction (config-driven)
 ├── converter.py             # Entity → OTEL span mapping, OTLP JSON export (config-driven)
 ├── otel_registry.py         # OTEL attribute definitions across 10 categories
-├── config_loader.py         # Loads and validates mapping config from JSON
+├── config_loader.py         # Loads and validates mapping config, mapping library scanning
 ├── log.py                   # Shared loguru logging configuration
 ├── utils.py                 # Shared utility functions
 ├── analyze_transcripts.py   # CLI: transcript coverage analysis
 ├── improve.py               # Self-learning improvement engine (outputs config updates)
 ├── pyproject.toml           # Project config and dependencies
 ├── web/
-│   ├── web.py               # Reflex frontend layout + /improve route
-│   ├── components/          # UI: upload, mapping_editor, react_flow, span_tree, export,
-│   │                        #   session_dashboard, conversation_view, entity_browser,
-│   │                        #   rule_hierarchy, event_registry, connection_view,
-│   │                        #   navbar, improve_dashboard
-│   └── state/               # Reflex state managers (upload, mapping, preview, improve)
+│   ├── web.py               # Reflex frontend layout (sidebar + main content)
+│   ├── components/          # UI: sidebar, load_mapping, connection_view, mapping_editor,
+│   │                        #   evaluate (router), evaluate_upload, span_tree, session_dashboard,
+│   │                        #   conversation_view, entity_browser, rule_hierarchy,
+│   │                        #   event_registry, save_mapping, upload, export, react_flow,
+│   │                        #   improve_dashboard
+│   └── state/               # Reflex state mixins (upload, mapping, preview, improve,
+│                            #   navigation, library)
 ├── config/
-│   └── default_mapping.json # Single source of truth for all mapping rules, attributes, and metadata
+│   ├── mappings/
+│   │   └── default.json     # Single source of truth for all mapping rules and metadata
+│   └── otel_attributes.json # OTEL attribute definitions
 ├── tests/
 │   ├── test_parsers.py            # Parser unit tests
 │   ├── test_models.py             # Model unit tests
@@ -72,7 +84,7 @@ MCS_OTEL/
 
 ## Transcript Analysis CLI
 
-Scans all available transcripts, cross-references every `valueType` against tracked event types and mapping rules in `config/default_mapping.json`, and produces a markdown report with coverage gaps and suggested config additions.
+Scans all available transcripts, cross-references every `valueType` against tracked event types and mapping rules in `config/mappings/default.json`, and produces a markdown report with coverage gaps and suggested config additions.
 
 ### Usage
 
@@ -105,8 +117,8 @@ The generated `docs/transcript_analysis.md` contains:
 
 ### Acting on Findings
 
-1. Add suggested mapping rules and attribute mappings to `config/default_mapping.json`
-2. Add new valueTypes to `tracked_event_types` in `config/default_mapping.json`
+1. Add suggested mapping rules and attribute mappings to `config/mappings/default.json`
+2. Add new valueTypes to `tracked_event_types` in `config/mappings/default.json`
 3. Or use the improvement cycle (`improve.py run`) which outputs a `proposed_mapping.json` with all changes
 
 ## Mapping Architecture
@@ -121,7 +133,7 @@ MCS Activity (valueType) → Entity Extraction → SpanMappingRule → OTEL Span
 
 **OTEL operations:** `agent.turn`, `gen_ai.chat`, `tool.execute`, `knowledge.retrieval`, `chain`, `text_completion`, `create_agent`, `topic_classification`
 
-### Config File (`config/default_mapping.json`)
+### Config File (`config/mappings/default.json`)
 
 The config file is the single source of truth for all mapping definitions:
 
@@ -182,17 +194,12 @@ uv run python improve.py approve            # Apply with version bump
 
 ### Web Dashboard
 
-```bash
-uv run reflex run
-# Navigate to http://localhost:3000/improve
-```
-
-The dashboard (accessible via the "Improve Mapping" navbar button) provides a guided 5-step workflow:
+The Improve step (step 4 in the sidebar) provides a guided 5-step workflow:
 
 1. **Configure** — set input directory, max iterations, min conversations threshold
 2. **Analyze** — iteration timeline, coverage chart, auto-applied vs needs-review summary
 3. **Review & Approve** — accept/reject each finding with code preview
-4. **Preview & Apply** — diff preview of proposed config changes before applying to `config/default_mapping.json`
+4. **Preview & Apply** — diff preview of proposed config changes before applying to `config/mappings/default.json`
 5. **Verify** — re-run to confirm improvements with before/after comparison
 
 ### How It Works
@@ -208,7 +215,7 @@ The dashboard (accessible via the "Improve Mapping" navbar button) provides a gu
 
 | File | Improvements |
 |------|-------------|
-| `config/default_mapping.json` | New mapping rules, event metadata, attribute mappings, tracked event types |
+| `config/mappings/default.json` | New mapping rules, event metadata, attribute mappings, tracked event types |
 
 ### Output
 
@@ -222,7 +229,7 @@ Results are saved to `improve_runs/`:
 - **Run the improvement loop** to auto-discover and fix mapping gaps
 - **Run the analysis CLI** after adding new transcripts to find gaps
 - **Review `docs/transcript_analysis.md`** for suggested config updates
-- **Add suggested mappings** to `config/default_mapping.json`
+- **Add suggested mappings** to `config/mappings/default.json`
 - **Future:** live OTEL collector integration, token accounting, PII redaction
 
 ## Tech Stack

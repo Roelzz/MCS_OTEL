@@ -148,13 +148,20 @@ class UploadMixin(rx.State, mixin=True):
             self.upload_error = f"File too large ({len(content) / 1024 / 1024:.1f} MB). Maximum is 10 MB."
             return
         text = content.decode("utf-8")
+        self._raw_content = text
         if self._parse_content(text):
             return rx.toast("Transcript parsed successfully")
 
     def handle_paste(self, content: str):
-        """Handle pasted JSON content."""
+        """Handle pasted JSON content. Falls back to uploaded file if paste is empty."""
         self.upload_error = ""
-        if self._parse_content(content):
+        text = content.strip() if content else ""
+        if not text and self._raw_content:
+            text = self._raw_content
+        if not text:
+            self.upload_error = "No transcript content — upload a file or paste JSON"
+            return
+        if self._parse_content(text):
             return rx.toast("Transcript parsed successfully")
 
     async def handle_bot_content_upload(self, files: list[rx.UploadFile]):
